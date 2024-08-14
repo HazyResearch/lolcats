@@ -35,7 +35,7 @@ def decode_samples(outputs: torch.Tensor,
     print(tokens)
     print('-' * 20)
     print(f'*** PREDICTIONS (sample {sample_idx}) ***')
-    pred_logits = outputs.argmax(dim=-1)
+    pred_logits = outputs.argmax(dim=-1).cpu()
     pred_tokens = tokenizer.decode(
         replace_padding_tokens(pred_logits[0], tokenizer.pad_token_id)
     )

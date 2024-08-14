@@ -90,7 +90,7 @@ class OurTrainer(OurDefaultTrainer):
 
             if ((targets != -100).sum() > 0 and self.tokenizer is not None and
                 sample_idx is not None and (sample_idx + 1) % 100 == 0):
-                decode_samples(outputs, targets, self.tokenizer, sample_idx)
+                decode_samples(outputs.cpu(), targets.cpu(), self.tokenizer, sample_idx)
             
             outputs = outputs.view(-1, outputs.shape[-1])
             targets = targets.view(-1).to(outputs.device)
