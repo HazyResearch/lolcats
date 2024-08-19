@@ -270,7 +270,7 @@ class LolcatsLinearAttention(nn.Module):
         v = v.view(b, l, *self.v_shape).transpose(1, 2)
 
         if past_key_value is not None:  #  and k.shape[2] > q.shape[2]:  # e.g., when generating
-            past_key_value.window_size = self.decode_window_size
+            past_key_value.window_size = getattr(self, 'decode_window_size', None)  # self.decode_window_size
             if isinstance(past_key_value, Cache):  # In Transformers v4.36+ this is a DynamicCache object
                 kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             else:
@@ -362,12 +362,12 @@ class LolcatsLinearAttention(nn.Module):
                 else:
                     kv_state = past_key_value.kv_states[self.layer_idx]
                     k_state  = past_key_value.k_states[self.layer_idx]
-                    y_true, _, _ = self.linear_attention(q, k, v, kv_state, k_state)  # Ordinarily the states are ignored
+                    y_true, _, _ = linear_attention(q, k, v, self.fp32_attention, self.eps)  # Ordinarily the states are ignored
                     past_key_value.update(k.detach(), v.detach(), self.layer_idx,
                                           accumulate_in_fp32=self.fp32_attention)
                                           # doing some unnecessary recomputation here
             else:
-                y_true, _, _ = linear_attention(q, k, v)
+                y_true, _, _ = linear_attention(q, k, v, self.fp32_attention, self.eps)
 
             # Concatenate heads and apply output projection
             y_true = y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
