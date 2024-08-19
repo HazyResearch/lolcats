@@ -34,10 +34,10 @@ def get_pretrained_loader(pretrained_model_name_or_path: str,
     #     )
     elif 'istral' in pretrained_model_name_or_path:  # Mistral or mistral; 
         # after Mixtral to avoid triggering on 'mistral/Mixtral' path
-        if transformers.__version__ == '4.43.0':
-            _loader = PretrainedLlamaLoader
-        else:
-            _loader = PretrainedMistralLoader
+        # if transformers.__version__ == '4.43.0':
+        #     _loader = PretrainedLlamaLoader
+        # else:
+        _loader = PretrainedMistralLoader
         return _loader(          # return PretrainedLlamaLoader(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             huggingface_token=huggingface_token,

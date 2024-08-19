@@ -39,6 +39,7 @@ class OurTrainer(OurDefaultTrainer):
         self.criterion = nn.CrossEntropyLoss(reduction='mean')
         self.tokenizer = getattr(self.train_loader.dataset, 'tokenizer', None)
         self.compute_loss_backprop = True  # Whether we backprop in self.compute_loss
+        self.initial_eval = False  # Whether to evaluate before training
 
     def compute_loss(self, model: nn.Module, data: dict[torch.Tensor],
                      sample_idx: int = None, **kwargs: any,
@@ -119,7 +120,10 @@ class OurTrainer(OurDefaultTrainer):
             
             targets = targets.cpu()
             outputs = outputs.cpu()
-            
+            _loss = _loss.cpu()
+        del past_key_values, outputs, targets, _loss
+        torch.cuda.empty_cache()
+
         # Display chunks in reverse
         chunk_metrics = [(k, v) for k, v in chunk_metrics.items()][::-1]
         chunk_metrics = {k: v for k, v in chunk_metrics}

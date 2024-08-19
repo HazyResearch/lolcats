@@ -72,11 +72,6 @@ class LooooolcatsMistralForCausalLM(LolcatsMistralForCausalLM):
     -> Experimental / WIP; but goal is to combine chunked linear attention during training
        to process long contexts with minimally-growing memory usage
     """
-    def __init__(self, state_chunk_len: int = 1024, **kwargs: any) -> None:
-        super().__init__(**kwargs)
-        self.state_chunk_len = state_chunk_len
-        self.generating = False
-
     def chunk_forward(self, *args: any, **kwargs: any):
         """Call this when training / processing one chunk"""
         return super().forward(*args, **kwargs)
@@ -99,7 +94,7 @@ class LooooolcatsMistralForCausalLM(LolcatsMistralForCausalLM):
         Forward pass where we chunk inputs 
         """
         self.generating = False
-        assert output_attentions is False
+        # assert output_attentions is False
         # assert use_cache is True
         if use_cache is not True:
             use_cache = True

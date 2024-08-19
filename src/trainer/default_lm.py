@@ -48,6 +48,7 @@ class OurTrainer():
                  eval_steps: int = 100,
                  max_eval_batches: int = -1,
                  print_samples: bool = False,
+                 initial_eval: bool = True,
                  **kwargs: any):
         super().__init__()
         self.model = model
@@ -86,6 +87,7 @@ class OurTrainer():
         self.eval_steps = eval_steps
         self.max_eval_batches = max_eval_batches
         self.print_samples = print_samples
+        self.initial_eval = initial_eval
 
         # Saving metrics
         self.train_metrics = {'train/loss': None, 
@@ -147,8 +149,10 @@ class OurTrainer():
         eval_for_step = False
 
         # Initial eval
-        print('-> Initial eval')
-        self.compute_eval_metrics(model, step=self.grad_step)
+        if self.initial_eval:
+            print('')
+            print('-> Initial eval')
+            self.compute_eval_metrics(model, step=self.grad_step)
         
         # model.to(self.device)
         for ix, data in enumerate(pbar):
