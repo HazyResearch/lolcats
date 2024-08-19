@@ -51,7 +51,8 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
                                window_size: int,
                                kv_state: torch.Tensor = None,
                                k_state: torch.Tensor = None,
-                               eps: float = 1e-12,):
+                               eps: float = 1e-12,
+                               mask_value: float=-1e8):
     """
     Hybrid attention combining sliding window and linear attentions
     """
@@ -60,7 +61,7 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
 
     # 1. Sliding window (softmax attention)
     a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k.float()) * (k.shape[-1] ** -0.5)
-    a_sm = a_sm.masked_fill(~mask_window.bool(), -torch.finfo(a_sm.dtype).max)
+    a_sm = a_sm.masked_fill(~mask_window.bool(), mask_value)
     # torch.softmax(a_sm, dim=-1), but we account for the max when combining
     a_sm_max = torch.amax(a_sm, dim=-1, keepdim=True)
     a_sm   = window_factor * torch.exp(a_sm - a_sm_max)

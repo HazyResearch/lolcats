@@ -66,10 +66,11 @@ def get_tokenizer_from_config(model_config):
             print("-> Error with tokenizer = LlamaTokenizer.from_pretrained(model_path)", e)
             print("-> Trying tokenizer = AutoTokenizer.from_pretrained(**model_config)")
             tokenizer = AutoTokenizer.from_pretrained(**model_config)
-    # elif 'Mistral-7B-Instruct-v0.3' in model_config['pretrained_model_name_or_path']:
-    #     tokenizer = LlamaTokenizer.from_pretrained(**model_config)
+            # tokenizer = LlamaTokenizer.from_pretrained(**model_config)  # v4.43 errors with `*** TypeError: not a string`
+    elif 'Mistral-7B-Instruct-v0.3' in model_config['pretrained_model_name_or_path']:
+        tokenizer = LlamaTokenizer.from_pretrained(**model_config)  # hack where AutoTokenizer doesn't recognize
     elif 'Mistral-7B' in model_config['pretrained_model_name_or_path']:
-        tokenizer = LlamaTokenizer.from_pretrained(**model_config)
+        tokenizer = AutoTokenizer.from_pretrained(**model_config)
     else:
         tokenizer = AutoTokenizer.from_pretrained(**model_config)
     return tokenizer

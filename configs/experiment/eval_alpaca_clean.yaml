@@ -1,5 +1,5 @@
 dataset:
-  name: alpaca_clean
+  name: alpaca_clean_instruct
   dataset_config:
     name: alpaca
     path: yahma/alpaca-cleaned

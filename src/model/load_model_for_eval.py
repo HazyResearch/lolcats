@@ -78,6 +78,7 @@ def update_model_config_from_args(model_config, args):
 def get_lm_eval_model(model_kwargs: dict,  # model_loader.loading_kwargs
                       path_to_lm_eval_harness: str,  # ../../lm-evaluation-harness
                       hedgehog_model: bool = False,
+                      long_model: bool = False,
                      ):
     """
     Load model for evaluation using LM Evaluation Harness
@@ -91,9 +92,15 @@ def get_lm_eval_model(model_kwargs: dict,  # model_loader.loading_kwargs
     if hedgehog_model:
         # from lm_eval_harness.models import HedgehogLlamaForCausalLM
         if 'mistral' in lm_kwargs['pretrained']:
-            from lm_eval_harness.models import LolcatsMistralForCausalLM as ModelClass
+            if long_model:
+                from lm_eval_harness.models import LooooolcatsMistralForCausalLM as ModelClass
+            else:
+                from lm_eval_harness.models import LolcatsMistralForCausalLM as ModelClass
         else:
-            from lm_eval_harness.models import LolcatsLlamaForCausalLM as ModelClass
+            if long_model:
+                from lm_eval_harness.models import LooooolcatsLlamaForCausalLM as ModelClass
+            else:
+                from lm_eval_harness.models import LolcatsLlamaForCausalLM as ModelClass
         lm = ModelClass.create_from_arg_string('', lm_kwargs)
     else:
         sys.path.append(path_to_lm_eval_harness)
@@ -169,6 +176,11 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
     if profile_model:
         model_config['attention']['attention_type'] += '_profile'
 
+    if 'long' in model_config['attention']['attention_type']:
+        long_model = True
+    else:
+        long_model = False
+
     if finetune_checkpoint_path is not None:
         finetune_config = finetune_checkpoint_path.split('-f=')[-1].split('-')[0]
         finetune_config_path = join(config_dir, 'experiment', f'{finetune_config}.yaml')
@@ -191,7 +203,7 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
 
     if lm_eval_model and attn_mlp_checkpoint_path is not None:
         lm = get_lm_eval_model(model_loader.loading_kwargs, path_to_lm_eval_harness,
-                               hedgehog_model=True)
+                               hedgehog_model=True, long_model=long_model)
         model = lm.model  # Do this way because we call the larger object
     elif lm_eval_model:  # Instantiate as lm_eval.base.LM object
         lm = get_lm_eval_model(model_loader.loading_kwargs, path_to_lm_eval_harness)
@@ -209,10 +221,11 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
     if attn_mlp_checkpoint_path is not None:
         # Update and load attentions
         model = load_and_convert_attns(model, model_config, 
-                                       checkpoint_path=attn_mlp_checkpoint_path)
+                                       checkpoint_path=attn_mlp_checkpoint_path)[0]
         if 'peft' in model_config['attention']:  # Merge back q and k proj
             model = model.merge_and_unload()
-        model = remove_base_attention(model)  # , model_config.attention)
+        # Already removed in load_and_convert_attns
+        # model = remove_base_attention(model)  # , model_config.attention)
         model = toggle_attention(model, False)
         if debug:
             print_header('*** Model after attention converion ***')
