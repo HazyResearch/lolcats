@@ -103,7 +103,8 @@ class OurTrainer(DefaultChunkedTrainer):
                     # Compute mean loss only over individual queries
                     aw_pred = aw_pred.contiguous().view(-1, k_len).clamp(min=1e-12).log()  
                     aw_true = aw_true.contiguous().view(-1, k_len)
-                    loss_xent += self.criterion_xent(aw_pred, aw_true)
+                    loss_xent += self.criterion_xent(aw_pred.to(model.device), 
+                                                     aw_true.to(model.device))
 
             loss_mse = loss_mse / (layer_idx + 1) * self.mse_factor
             loss_xent = loss_xent / (layer_idx + 1) * self.xent_factor

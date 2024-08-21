@@ -47,7 +47,8 @@ class OurTrainer(DefaultTrainer):
         loss_mse = 0
         loss_xent = 0
         n_layers = 0  # Number of layers to distill
-        for attns in outputs:
+        softmax_layers = []
+        for layer_idx, attns in enumerate(outputs):
             if attns is not None:
                 if len(attns) != 2:
                     attns = attns.cpu()
@@ -61,9 +62,14 @@ class OurTrainer(DefaultTrainer):
                         a_pred = a_pred.contiguous().view(-1, k_len)
                         a_true = a_true.contiguous().view(-1, k_len)
                         loss_xent += self.criterion_xent(a_pred, a_true)
+                        # loss_xent += self.criterion_xent(a_pred.to(model.device), 
+                        #                                  a_true.to(model.device))
                     if self.mse_factor > 0:
+                        # attns[1] = [a.to(model.device) for a in attns[1]]
                         loss_mse += self.criterion_mse(*attns[1])
                     n_layers += 1
+            else:
+                softmax_layers.append(layer_idx)
         if n_layers > 0:
             loss_xent = loss_xent / n_layers * self.xent_factor
             loss_mse = loss_mse / n_layers * self.mse_factor
@@ -74,7 +80,7 @@ class OurTrainer(DefaultTrainer):
         # except NameError:
         #     pass
         # torch.cuda.empty_cache()
-
+        # print('softmax_layer:', softmax_layers)
         if 'position_ids' in data:
             outputs = {'loss_xent': loss_xent.item() if self.xent_factor > 0 else 0,
                        'loss_mse': loss_mse.item() if self.mse_factor > 0 else 0,

@@ -13,14 +13,20 @@ def convert_attention(model: nn.Module,
     """
     Call to convert all attention layers
     """
+    softmax_attns = []
+    if 'softmax_attentions' in attention_config:
+        softmax_attns = attention_config['softmax_attentions']
     if attention_config.attention_type != 'softmax':
         layers = traverse_layers(model)
-        for layer in tqdm(layers, desc='Converting attentions...'):
-        
-            layer.self_attn = convert_llama_attention(
-                layer, attention_config, layers, train_attention, remove_base_attn,
-            )
-            layer.self_attn.converted = True
+        for layer_idx, layer in enumerate(tqdm(layers, desc='Converting attentions...')):
+            if layer_idx not in softmax_attns:
+                layer.self_attn = convert_llama_attention(
+                    layer, attention_config, layers, train_attention, remove_base_attn,
+                )
+                layer.self_attn.converted = True
+            else:  # Freeze any preserved softmax attention layers
+                for p in layer.parameters():
+                    p.requires_grad = False
     else:
         print(f'-> attention_config.attention_type is {attention_config.attention_type}; not converting attentions')
     return model
@@ -106,6 +112,18 @@ def get_attention(attention_type: str, **kwargs: any):
     elif attention_type == 'lolcats_long_llama_window_tk':
         from .linear_attention import LolcatsTKWindowLongAttention
         return partial(LolcatsTKWindowLongAttention, **kwargs)
+    
+    elif attention_type == 'lolcats_llama_window_tk_bf16':
+        from .linear_attention import LolcatsTKWindowAttentionBF16
+        return partial(LolcatsTKWindowAttentionBF16, **kwargs)
+
+    elif attention_type == 'lolcats_llama_window_tk_fa2':
+        from .linear_attention.linear_window_attention_tk_fa2 import LolcatsTKWindowAttentionFA2
+        return partial(LolcatsTKWindowAttentionFA2, **kwargs)
+    
+    elif attention_type == 'lolcats_llama_window_tk_sdpa':
+        from .linear_attention.linear_window_attention_tk_sdpa import LolcatsTKWindowAttentionSDPA
+        return partial(LolcatsTKWindowAttentionSDPA, **kwargs)
 
     elif attention_type == 'lolcats_llama_window_sw':
         from .linear_attention import LolcatsSlidingWindowAttention

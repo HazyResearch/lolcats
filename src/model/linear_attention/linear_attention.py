@@ -137,6 +137,7 @@ class LolcatsLinearAttention(nn.Module):
                  eps: float = 1e-12,
                  fp32_attention: bool = False,
                  track_state_grads: bool = False,
+                 rank: Optional[int] = 0,
                  **kwargs: any) -> None:
         super().__init__()
         self.base_config = getattr(base_attn, 'config', None)
@@ -152,16 +153,16 @@ class LolcatsLinearAttention(nn.Module):
         self.base_inference = False
         self.fp32_attention = fp32_attention
         self.track_state_grads = track_state_grads
-        if fp32_attention and layer_idx == 0:
-            print(f'-> fp32_attention is {fp32_attention}')
-
-        if layer_idx == 0 and feature_map_kwargs is not None:
-            for k, v in feature_map_kwargs.items():
-                print(f'-> {k}: {v}')
-        if layer_idx == 0 and learned_kernel_kwargs is not None:
-            for k, v in learned_kernel_kwargs.items():
-                print(f'-> {k}: {v}')
-    
+        if rank == 0:  # multi-gpu
+            if fp32_attention and layer_idx == 0:
+                print(f'-> fp32_attention is {fp32_attention}')
+            if layer_idx == 0 and feature_map_kwargs is not None:
+                for k, v in feature_map_kwargs.items():
+                    print(f'-> {k}: {v}')
+            if layer_idx == 0 and learned_kernel_kwargs is not None:
+                for k, v in learned_kernel_kwargs.items():
+                    print(f'-> {k}: {v}')
+                    
         self.remove_base_attn = remove_base_attn
 
         # Rotary embeddings (patch for Llama 3.1, Transformer v4.43.0)
