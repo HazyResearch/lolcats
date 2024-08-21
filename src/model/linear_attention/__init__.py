@@ -10,3 +10,6 @@ from .linear_window_attention_tk import (
 from .linear_window_attention_tk_long import (
     LolcatsTKWindowLongAttention,
 )
+from .linear_window_attention_tk_bf16 import (
+    LolcatsTKWindowAttentionBF16,
+)

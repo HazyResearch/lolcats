@@ -47,6 +47,10 @@ class LolcatsLlamaModel(LlamaModel):
     Modified from transformers.models.llama.modeling_llama.LlamaModel
     -> Only difference is using KV state for past_key_values instead of cache
     """
+    def __init__(self, *args: any, **kwargs: any):
+        super().__init__(*args, **kwargs)
+        self.layerwise_cpu = False
+
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,

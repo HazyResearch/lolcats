@@ -32,6 +32,7 @@ def load_and_convert_attns(model: nn.Module,
 
     if attention_type is not None:  # override default
         model_config['attention']['attention_type'] = attention_type
+    model_config['attention']['rank'] = rank   # multi-gpu debugging
 
     model = convert_attention(model, model_config['attention'], 
                               train_attention, remove_base_attn)

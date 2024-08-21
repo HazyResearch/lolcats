@@ -32,7 +32,7 @@ def get_masks(window_size: int, q_len: int, k_len: int,
     l = window_size
     m = math.ceil(max(q_len, k_len) / window_size)
     # Creates an n x n mask where n = window_size^2
-    mask = torch.block_diag(*[torch.ones((l, l), )] * m)
+    mask = torch.block_diag(*[torch.ones((l, l), **kwargs)] * m)
     mask += torch.roll(mask, -l, -1) # this adds the terracing
     if mask.shape[0] > q_len:
         mask = mask[-q_len:]
@@ -40,6 +40,8 @@ def get_masks(window_size: int, q_len: int, k_len: int,
         mask = mask[:, -k_len:]
     # Return softmax mask (window), linear attention mask
     mask = mask[None, None, ...]  # b, h, q_len, k_len
+    # mask = torch.tril(mask)
+    # return mask, ~mask
     return torch.tril(mask).to(**kwargs), torch.tril(1 - mask).to(**kwargs)
 
 
@@ -52,7 +54,7 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
                                kv_state: torch.Tensor = None,
                                k_state: torch.Tensor = None,
                                eps: float = 1e-12,
-                               mask_value: float=-1e8):
+                               mask_value: float = -1e12) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Hybrid attention combining sliding window and linear attentions
     """
@@ -60,34 +62,39 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
     mask_window, mask_linear = get_masks(window_size, q.shape[-2], k.shape[-2], q.device)
 
     # 1. Sliding window (softmax attention)
-    a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k.float()) * (k.shape[-1] ** -0.5)
+    a_sm = torch.einsum('bhmd,bhnd->bhmn', q, k) * (k.shape[-1] ** -0.5)
     a_sm = a_sm.masked_fill(~mask_window.bool(), mask_value)
     # torch.softmax(a_sm, dim=-1), but we account for the max when combining
     a_sm_max = torch.amax(a_sm, dim=-1, keepdim=True)
+    # a_sm   = window_factor * torch.exp((a_sm - a_sm_max).float()).to(q.dtype)
     a_sm   = window_factor * torch.exp(a_sm - a_sm_max)
-    sum_sm = a_sm.sum(dim=-1, keepdim=True)
+    # sum_sm = a_sm.sum(dim=-1, keepdim=True)
 
     # 2. Under window (linear attention)
-    a_ln = torch.einsum('bhmd,bhnd->bhmn', f_q.float(), f_k.float())
+    a_ln = torch.einsum('bhmd,bhnd->bhmn', f_q, f_k)  # .to(q.dtype)
     a_ln = linear_factor * a_ln.masked_fill(~mask_linear.bool(), 0)
-    sum_ln = a_ln.sum(dim=-1, keepdim=True)
+    # sum_ln = a_ln.sum(dim=-1, keepdim=True)
 
     # 3. Combine
-    a = ((a_sm + a_ln) / (sum_sm + sum_ln)).to(q.dtype)  # Save attention weights
+    a = ((a_sm + a_ln) / 
+         (a_sm.sum(dim=-1, keepdim=True) + a_ln.sum(dim=-1, keepdim=True)))  # .to(q.dtype)  # Save attention weights
+    y = torch.einsum('bhmn,bhnd->bhmd', a, v)  # .float())
+    return y, a
+
     # Allow outputs to also depend on prior kv_state and k_state
-    y = torch.einsum('bhmn,bhnd->bhmd', a_sm + a_ln, v.float())
+    y = torch.einsum('bhmn,bhnd->bhmd', a_sm + a_ln, v)  # .float())
     if kv_state is not None:  # Combine with prior kv_state and k_state
-        y += linear_factor * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float())
+        y += linear_factor * torch.einsum('bhld,bhdf->bhlf', f_q, kv_state)
         sum_ln += linear_factor * torch.einsum(
-            'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
-    y = (y / (sum_sm + sum_ln)).to(q.dtype)
+            'bhld,bhnd->bhl', f_q, k_state)[..., None]
+    y = (y / (sum_sm + sum_ln))  # .to(q.dtype)
     return y, a  # attention weights only for the last chunk
 
 
 # ---------------------
 # Attention layer class
 # ---------------------
-class LolcatsTKWindowAttention(LolcatsLinearAttention):
+class LolcatsTKWindowAttentionBF16(LolcatsLinearAttention):
     """
     Lolcats attention combining sliding window and linear attention
     """
@@ -139,9 +146,14 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         if self.train_attention:
             # 1. Compute "ground-truth" attention output and weights
             with torch.no_grad():
-                _y_true, a_true = softmax_attention(q, k, v)[:2]
+                _y_true, a_true = softmax_attention(q, k, v, fp32_attention=False)[:2]
                 y_true = _y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
                 y_true = self.o_proj(y_true)
+                # # Save memory
+                # device = y_true.device
+                # y_true = y_true.cpu()
+                # a_true, _y_true = a_true.cpu(), _y_true.cpu()
+                # torch.cuda.empty_cache()
 
             # 2. Compute "predicted" attention outputs
             # compute attn weights under sliding window
@@ -150,11 +162,10 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                       window_factors, linear_factors,
                                                       window_size=self.window_size)
-            # Save memory
-            a_true, _y_true = a_true.cpu(), _y_true.cpu()
-            a_pred, y_pred = a_pred.cpu(), y_pred.cpu()
-            torch.cuda.empty_cache()
+            # a_pred, y_pred = a_pred.cpu(), y_pred.cpu()
+            # torch.cuda.empty_cache()
             attn_weights = ((a_pred, a_true), (y_pred, _y_true))
+            # y_true = y_true.to(device)
         else:
             attn_weights = None
             # attention_mask = None  # For now this is always True
@@ -256,28 +267,31 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
                 self._seen_tokens += key_states.shape[-2]
 
             dtype = key_states.dtype
-            if accumulate_in_fp32:
-                # key_states = key_states.float()
-                fmap_key_states = fmap_key_states.float()
-                value_states = value_states.float()
+            # if accumulate_in_fp32:
+            #     # key_states = key_states.float()
+            #     fmap_key_states = fmap_key_states.float()
+            #     value_states = value_states.float()
 
             # Decoding KV state (KV terms up to last window_size)
             decode_kv_state = torch.einsum(
                 'bhlf,bhld->bhfd', 
-                fmap_key_states[:, :, :-self.window_size],
-                value_states[:, :, :-self.window_size]
-            )
+                fmap_key_states[:, :, :-self.window_size].float(),
+                value_states[:, :, :-self.window_size].float()
+            ).to(dtype)
             # KV state
             kv_state = decode_kv_state + torch.einsum(
                 'bhlf,bhld->bhfd', 
-                fmap_key_states[:, :, -self.window_size:],
-                value_states[:, :, -self.window_size:]
-            )
+                fmap_key_states[:, :, -self.window_size:].float(),
+                value_states[:, :, -self.window_size:].float()
+            ).to(dtype)
             # shape is b, h, 1, f; note the 1
-            decode_k_state = fmap_key_states[:, :, :-self.window_size].sum(dim=-2, keepdim=True)
-            k_state = (decode_k_state +
-                       fmap_key_states[:, :, -self.window_size:].sum(dim=-2, keepdim=True))
-
+            decode_k_state = (
+                fmap_key_states[:, :, :-self.window_size].float().sum(dim=-2, keepdim=True).to(dtype)
+            )
+            k_state = (
+                decode_k_state + 
+                fmap_key_states[:, :, -self.window_size:].float().sum(dim=-2, keepdim=True).to(dtype)
+            )
             # Update the cache
             if len(self.k_states) <= layer_idx:  # Initializing kv and k states
                 self.kv_states.append(kv_state.to(dtype))
