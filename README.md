@@ -152,7 +152,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_fd64 \
 --distill_config distill_alpaca_clean_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
---lk_skip_connection --lk_zero_init \
+--lk_zero_init \
 --verbose --seed 0 --replicate 0 \
 --huggingface_token hf_<insert your token here>
 ```
@@ -164,7 +164,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
---lk_skip_connection --lk_zero_init \
+--lk_zero_init \
 --verbose --seed 0 --replicate 0 \
 --huggingface_token hf_<insert your token here>
 ```
@@ -176,7 +176,7 @@ python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_fd64 \
 --distill_config distill_alpaca_clean_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
---lk_skip_connection --lk_zero_init \
+--lk_zero_init \
 --verbose --seed 0 --replicate 0 \
 --huggingface_token hf_<insert your token here>
 ```
@@ -188,7 +188,7 @@ python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_wtk64_fd64_w01
 --distill_config distill_alpaca_clean_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
---lk_skip_connection --lk_zero_init \
+--lk_zero_init \
 --verbose --seed 0 --replicate 0 \
 --huggingface_token hf_<insert your token here>
 ```
@@ -204,7 +204,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
---lk_skip_connection --lk_zero_init \
+--lk_zero_init \
 --verbose --seed 0 --replicate 0 \
 --load_distill_checkpoint <path-to-distill-checkpoint> \
 --load_finetune_checkpoint <path-to-finetune-checkpoint>
