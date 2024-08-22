@@ -88,6 +88,10 @@ def get_lm_eval_model(model_kwargs: dict,  # model_loader.loading_kwargs
     lm_kwargs['dtype'] = str(lm_kwargs['torch_dtype']).split('.')[-1]
     del lm_kwargs['torch_dtype']
 
+    lm_kwargs['use_cache'] = False
+    lm_kwargs['output_attentions'] = False
+    lm_kwargs['output_hidden_states'] = False
+
     print('-> Loading as lm-evaluation-harness model')
     if hedgehog_model:
         # from lm_eval_harness.models import HedgehogLlamaForCausalLM
@@ -263,7 +267,10 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
         print('-> Training attention:', model.model.layers[0].self_attn.train_attention)
     except AttributeError as e:
         print('Error at:', e)
-        print('-> Training attention:', model.model.model.layers[0].self_attn.train_attention)
+        _train_attn = model.model.model.layers[0].self_attn.train_attention
+        print(f"But it's ok, {type(model.model.model)} has attribute 'layers'")
+        print('-> Training attention:', _train_attn)
+        
 
     if print_model or debug:  # Look at model
         print_header('*** Model ***')
