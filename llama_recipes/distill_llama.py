@@ -446,6 +446,9 @@ def main():
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                         train_attention=True,
                                                         rank=rank)
+    # Hack to avoid having to call lm_head
+    with torch.no_grad():
+        model.lm_head = None
     model = toggle_attention(model, train=True)
     if 'lora' in args.model_config and rank == 0:  # a bit hacky, but we should name model_config to indicate peft
         model.print_trainable_parameters()

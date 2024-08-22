@@ -51,12 +51,15 @@ class LossComputer():
     """
     Computes the loss for attention distillation
     """
-    def __init__(self, mse_factor: int = 1000, xent_factor: int = 1, **kwargs: any) -> None:
+    def __init__(self, mse_factor: int = 1000, xent_factor: int = 1, 
+                 n_queries: int = None, n_keys: int = None, **kwargs: any) -> None:
         super().__init__()
         self.criterion_mse = nn.MSELoss(reduction='mean')
         self.criterion_xent = nn.CrossEntropyLoss(reduction='mean')
         self.mse_factor = mse_factor
         self.xent_factor = xent_factor
+        self.n_queries = n_queries
+        self.n_keys = n_keys
 
     def compute_loss(self, model: torch.nn.Module, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the loss for attention distillation"""
@@ -70,25 +73,39 @@ class LossComputer():
                 if self.xent_factor > 0:
                     # Cross-entropy loss
                     a_pred, a_true = attns[0]
+                    if self.n_queries is not None:
+                        a_pred = a_pred[:, :, -self.n_queries:, :]
+                        a_true = a_true[:, :, -self.n_queries:, :]
                     a_pred = a_pred.clamp(min=1e-12).log()  # nn.CrossEntropy assumes unnormalized logits
                     k_len = a_true.shape[-1]  # batch, n_heads, q_len, k_len
                     # Compute mean cross-entropy over all queries
                     a_pred = a_pred.contiguous().view(-1, k_len)
                     a_true = a_true.contiguous().view(-1, k_len)
-                    loss_xent += self.criterion_xent(a_pred, a_true)
+                    loss_xent += self.criterion_xent(a_pred[:, :self.n_keys],
+                                                     a_true[:, :self.n_keys])
+                    # a_pred = a_pred.detach().cpu()
+                    # a_true = a_true.detach().cpu()
                     # loss_xent += self.criterion_xent(a_pred.to(model.device), 
                     #                                  a_true.to(model.device))
                 if self.mse_factor > 0:
                     loss_mse += self.criterion_mse(*attns[1])
+                    # attns[1][0] = attns[1][0].detach().cpu()
+                    # attns[1][1] = attns[1][1].detach().cpu()
                     # loss_mse += self.criterion_mse(*[a.to(model.device) for a in attns[1]])
                 n_layers += 1
-                # del attns
                 # torch.cuda.empty_cache()
         if n_layers > 0:
-            loss_xent = loss_xent * self.xent_factor
-            loss_mse = loss_mse * self.mse_factor
-        loss = (loss_xent + loss_mse) / n_layers
-        return loss
+            loss_xent = loss_xent * self.xent_factor / n_layers
+            loss_mse = loss_mse * self.mse_factor / n_layers
+        loss = (loss_xent + loss_mse)
+        loss_metrics = {
+            'loss_xent': loss_xent.item(), 
+            'loss_mse': loss_mse.item(), 
+            'loss': loss.item(),
+            'xent_factor': self.xent_factor,
+            'mse_factor': self.mse_factor,
+        }
+        return loss, loss_metrics
 
 
 def train(model, train_dataloader, eval_dataloader, tokenizer,
@@ -175,9 +192,9 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             if is_xpu_available():
                                 batch[key] = batch[key].to('xpu:0')
                             else:
-                                batch[key] = batch[key].to('cuda:0')           
+                                batch[key] = batch[key].to('cuda:0')        
                 with autocast():
-                    loss = loss_computer.compute_loss(model, batch)
+                    loss, loss_metrics = loss_computer.compute_loss(model, batch)
                 loss = loss / gradient_accumulation_steps
                 if train_config.save_metrics:
                     train_step_loss.append(loss.detach().cpu().float().item())
@@ -223,7 +240,10 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             'train/loss': loss.detach().cpu().item(),
                         })
 
-                pbar.set_description(f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.item():.5f}, lr: {optimizer.param_groups[0]['lr']:.5f})")
+                desc = f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.item():.5f}, lr: {optimizer.param_groups[0]['lr']:.5f})"
+                for k, v in loss_metrics.items():
+                    desc += f" | {k}: {v:.5f}"
+                pbar.set_description(desc)
 
                 if train_config.save_metrics:
                     save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
@@ -242,7 +262,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                     if not eval_mode:
                         model.train()
                         print(f'-> Model is training on rank {rank}')
-                    torch.cuda.empty_cache()
+                    del loss; del batch; del eval_outputs
+                    clear_gpu_cache()
             pbar.close()
 
         epoch_end_time = time.perf_counter()-epoch_start_time
@@ -403,13 +424,16 @@ def evaluate_attn(model, train_config, eval_dataloader,
         # Ensure no gradients are computed for this scope to save memory
         with torch.no_grad():
             # Forward pass and compute loss
-            loss = loss_computer.compute_loss(model, batch)
+            loss, loss_metrics = loss_computer.compute_loss(model, batch)
             if train_config.save_metrics:
                 val_step_loss.append(loss.detach().float().item()) 
 
             eval_loss += loss.detach().float()
 
-        pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f}")
+        desc = f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f}"
+        for k, v in loss_metrics.items():
+            desc += f" | {k}: {v:.5f}"
+        pbar.set_description(desc)
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
