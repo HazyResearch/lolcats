@@ -1,4 +1,4 @@
-name: hedgehog
+name: lolcats
 channels:
   - conda-forge
   - pytorch
