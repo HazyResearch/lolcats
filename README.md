@@ -114,7 +114,7 @@ python -Wignore demo_hedgehog_llm.py \
 ### Linearizing 7B models
 
 <p align="center">
-<img src="assets/hedgehog_llamas.png" align='center' width=80% height=80%>
+<img src="assets/hedgehog_llamas.png" align='center' width=30% height=30%>
 </p>
 
 Any of the below commands will convert a 7B Mistral or Llama LLM into a subquadratic attention instruction-following variant. Despite only using LoRA and training on these 50K instruction-tuning samples, we're able to ``unlock'' a good amount of the base model performance when measured on LM Eval tasks.
@@ -219,7 +219,7 @@ For sample LM Eval scripts, please see `./lm_eval_harness/README.md`. In particu
 ### Linearizing 70B models and up [WIP]
 
 <p align="center">
-<img src="assets/hedgehog_llamas_big.png" align='center' width=80% height=80%>
+<img src="assets/hedgehog_llamas_big.png" align='center' width=40% height=40%>
 </p>
 
 We also support linearizing larger LLMs (Llama 3.1 70B, Llama 3.1 405B) using the great [llama-recipes](https://github.com/meta-llama/llama-recipes/tree/main/src/llama_recipes) repository.
