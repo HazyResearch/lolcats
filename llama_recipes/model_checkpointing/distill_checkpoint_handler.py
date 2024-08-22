@@ -10,8 +10,8 @@ from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     StateDictType,
     FullStateDictConfig,  # general model non-sharded, non-flattened params
-    # LocalStateDictConfig,  # flattened params, usable only by FSDP
-    # ShardedStateDictConfig, # un-flattened param but shards, usable by other parallel schemes.
+    LocalStateDictConfig,  # flattened params, usable only by FSDP
+    ShardedStateDictConfig, # un-flattened param but shards, usable by other parallel schemes.
 )
 
 from torch.distributed._shard.checkpoint import (
@@ -186,9 +186,13 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
     )
     t0 = time.perf_counter()
 
-    with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
+    with FSDP.state_dict_type(model,
+                              StateDictType.SHARDED_STATE_DICT,
+                              ShardedStateDictConfig(offload_to_cpu=True),
+                              ):
         # state_dict = {"model": model.state_dict()}
         state_dict = model.state_dict()
+        # state_dict = model.state_dict(state_dict_device='cpu')
         ignore_params = [
             _rename_sharded(n)
             # n.replace('_fsdp_wrapped_module.','').replace('._checkpoint_wrapped_module', '').replace('.mlp._flat_param', '.mlp.layer').replace('._flat_param', '.weight')

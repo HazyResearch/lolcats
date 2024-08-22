@@ -301,11 +301,11 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     return results, best_checkpoint_path
 
 
-def eval_loop(model, evaluate_func, optimizer, lr_scheduler, 
-              train_config, fsdp_config, rank, eval_dataloader, 
+def eval_loop(model, evaluate_func, optimizer, lr_scheduler,
+              train_config, fsdp_config, rank, eval_dataloader,
               local_rank, tokenizer, wandb_run,
-              val_step_loss, val_loss, best_val_loss, checkpoint_times, 
-              epoch, step):  # extra globals
+              val_step_loss, val_loss, best_val_loss,
+              checkpoint_times, epoch, step):  # extra globals
     """
     Evaluate model and save checkpoints
     - see `evaluate_func` for evaluation logic
@@ -389,7 +389,7 @@ def evaluate_attn(model, train_config, eval_dataloader,
     val_step_loss = []
 
     eval_loss = 0.0  # Initialize evaluation loss
-    _epoch = epoch if epoch is not None else ''
+    _epoch = f' {epoch}' if epoch is not None else ''
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Evaluating epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
         for key in batch.keys():
@@ -408,6 +408,8 @@ def evaluate_attn(model, train_config, eval_dataloader,
                 val_step_loss.append(loss.detach().float().item()) 
 
             eval_loss += loss.detach().float()
+
+        pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f}")
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
@@ -429,11 +431,11 @@ def evaluate_attn(model, train_config, eval_dataloader,
     if local_rank == 0 or not train_config.enable_fsdp:
         print(f" {eval_epoch_loss=}")
 
-    if wandb_run: 
+    if wandb_run:
         wandb_run.log({'eval/loss': eval_epoch_loss,}, commit=False)
 
     del loss; del eval_loss; del batch
-    torch.cuda.empty_cache()
+    clear_gpu_cache()
 
     return eval_epoch_loss, val_step_loss
 

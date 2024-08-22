@@ -190,9 +190,9 @@ def get_args():
         args.run_name += f'-npgc={args.no_peft_grad_ckpt}'
     if args.fsdp_activation_checkpointing is not None:
         args.run_name += f'-fac={args.fsdp_activation_checkpointing}'
-    if args.dataset_chunk_size is not None:
-        args.run_name += f'-dcs={args.dataset_chunk_size}'
-    args.run_name += f'-s={args.seed}'
+    # if args.dataset_chunk_size is not None:
+    #     args.run_name += f'-dcs={args.dataset_chunk_size}'
+    # args.run_name += f'-s={args.seed}'
     
     if args.debug:
         args.run_name += '-debug'
