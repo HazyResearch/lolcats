@@ -190,9 +190,9 @@ def get_args():
         args.run_name += f'-npgc={args.no_peft_grad_ckpt}'
     if args.fsdp_activation_checkpointing is not None:
         args.run_name += f'-fac={args.fsdp_activation_checkpointing}'
-    if args.dataset_chunk_size is not None:
-        args.run_name += f'-dcs={args.dataset_chunk_size}'
-    args.run_name += f'-s={args.seed}'
+    # if args.dataset_chunk_size is not None:
+    #     args.run_name += f'-dcs={args.dataset_chunk_size}'
+    # args.run_name += f'-s={args.seed}'
     
     if args.debug:
         args.run_name += '-debug'
@@ -446,6 +446,9 @@ def main():
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                         train_attention=True,
                                                         rank=rank)
+    # Hack to avoid having to call lm_head
+    with torch.no_grad():
+        model.lm_head = None
     model = toggle_attention(model, train=True)
     if 'lora' in args.model_config and rank == 0:  # a bit hacky, but we should name model_config to indicate peft
         model.print_trainable_parameters()

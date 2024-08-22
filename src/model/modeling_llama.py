@@ -25,6 +25,7 @@ from typing import Optional, Tuple, List, Union
 import warnings
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from transformers.models.llama.modeling_llama import (
     LlamaModel, LlamaForCausalLM, LLAMA_INPUTS_DOCSTRING,
@@ -192,6 +193,29 @@ class LolcatsLlamaForCausalLM(LlamaForCausalLM):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def forward(self, *args: any, labels: Optional[torch.LongTensor] = None, **kwargs: any):
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        outputs = self.model(*args, **kwargs)
+        hidden_states = outputs[0]
+        if getattr(self.model.layers[0].self_attn, 'train_attention', False):
+            logits = None
+        else:  # regular training
+            if self.config.pretraining_tp > 1:
+                lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
+                logits = [F.linear(hidden_states, lm_head_slices[i]) 
+                          for i in range(self.config.pretraining_tp)]
+                logits = torch.cat(logits, dim=-1)
+            else:
+                logits = self.lm_head(hidden_states)
+            logits = logits.float()
+            
+        return CausalLMOutputWithPast(
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 class LooooolcatsLlamaForCausalLM(LolcatsLlamaForCausalLM):

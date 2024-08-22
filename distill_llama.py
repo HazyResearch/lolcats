@@ -147,7 +147,7 @@ def main():
         wandb.config.update(_flattened)
 
     # Get pretrained model
-    model_loader = get_pretrained_loader(**model_config.model, 
+    model_loader = get_pretrained_loader(**model_config.model,
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()
     tokenizer.pad_token_id = tokenizer.eos_token_id

@@ -113,6 +113,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     results = {}
     best_val_loss = float("inf")
     best_checkpoint_path = None
+    total_step = 0
     
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
@@ -149,7 +150,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                 if train_config.use_fp16:
                     # if fp16 is enabled, use gradient scaler to handle gradient update
                     scaler.scale(loss).backward()
-                    if (step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                    if (total_step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                         if train_config.gradient_clipping and train_config.gradient_clipping_threshold > 0.0:
                             scaler.unscale_(optimizer)
                             if train_config.enable_fsdp:
@@ -163,7 +164,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                 else:
                     # regular backpropagation when fp16 is not used
                     loss.backward()
-                    if (step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                    if (total_step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                         if train_config.gradient_clipping and train_config.gradient_clipping_threshold > 0.0:
                             if train_config.enable_fsdp:
                                 model.clip_grad_norm_(train_config.gradient_clipping_threshold)
@@ -177,7 +178,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                     if not train_config.enable_fsdp or rank==0:
                         wandb_run.log({
                             'train/epoch': epoch + 1,
-                            'train/step': epoch * len(train_dataloader) + step,
+                            'train/step': total_step,  # epoch * len(train_dataloader) + step,
                             'train/loss': train_step_loss[-1],
                             'train/ppl': train_step_perplexity[-1]
                         })
@@ -189,21 +190,24 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                 if train_config.save_metrics:
                     save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
 
-                if step == getattr(train_config, 'num_train_steps', -1):
+                if total_step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic
 
                 if (train_config.run_validation and (
-                    (step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  #  or step == len(train_dataloader) - 1)):
+                    (total_step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  #  or step == len(train_dataloader) - 1)):
                     dist.barrier()
-                    eval_outputs = eval_loop(model, optimizer, lr_scheduler, train_config, fsdp_config, rank,
-                                             eval_dataloader, local_rank, tokenizer, wandb_run,
-                                             val_step_loss, val_loss, best_val_loss, checkpoint_times, epoch, step)
+                    eval_outputs = eval_loop(model, evaluate_lm, optimizer, lr_scheduler,
+                                             train_config, fsdp_config, rank, eval_dataloader,
+                                             local_rank, tokenizer, wandb_run,
+                                             val_step_loss, val_loss, best_val_loss,
+                                             checkpoint_times, epoch, total_step)
                     dist.barrier()
                     save_path, val_step_loss, val_loss, best_val_loss, checkpoint_times = eval_outputs
                     if save_path is not None:
                         best_checkpoint_path = save_path
                     model.train()
                     print(f'-> Model is training on rank {rank}')
+                total_step += 1
             pbar.close()
 
         epoch_end_time = time.perf_counter()-epoch_start_time
@@ -226,9 +230,11 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         # Update the learning rate as needed
         # lr_scheduler.step()
         dist.barrier()
-        eval_outputs = eval_loop(model, evaluate_lm, optimizer, lr_scheduler, train_config, fsdp_config, rank,
-                                 eval_dataloader, local_rank, tokenizer, wandb_run,
-                                 val_step_loss, val_loss, best_val_loss, checkpoint_times, epoch, step)
+        eval_outputs = eval_loop(model, evaluate_lm, optimizer, lr_scheduler,
+                                 train_config, fsdp_config, rank, eval_dataloader,
+                                 local_rank, tokenizer, wandb_run,
+                                 val_step_loss, val_loss, best_val_loss,
+                                 checkpoint_times, epoch, total_step)
         dist.barrier()
         save_path, val_step_loss, val_loss, best_val_loss, checkpoint_times = eval_outputs
         if save_path is not None:
@@ -242,7 +248,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     return results, best_checkpoint_path
 
 
-def evaluate_lm(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run):
+def evaluate_lm(model, train_config, eval_dataloader,
+                local_rank, tokenizer, wandb_run, epoch: int = None):
     """
     Evaluates the model on the given dataloader
 
@@ -261,7 +268,9 @@ def evaluate_lm(model, train_config, eval_dataloader, local_rank, tokenizer, wan
     val_step_loss = []
 
     eval_loss = 0.0  # Initialize evaluation loss
-    for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
+    _epoch = f' {epoch}' if epoch is not None else ''
+    pbar = tqdm(eval_dataloader,colour="green", desc=f"Evaluating epoch{_epoch}", dynamic_ncols=True)
+    for step, batch in enumerate(pbar):
         for key in batch.keys():
             if train_config.enable_fsdp:
                 batch[key] = batch[key].to(local_rank)
@@ -278,6 +287,8 @@ def evaluate_lm(model, train_config, eval_dataloader, local_rank, tokenizer, wan
                 val_step_loss.append(loss.detach().cpu().float().item()) 
 
             eval_loss += loss.detach().float()
+            _ppl = torch.exp(eval_loss/(step+1)).item()
+        pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
@@ -301,7 +312,7 @@ def evaluate_lm(model, train_config, eval_dataloader, local_rank, tokenizer, wan
     if local_rank == 0 or not train_config.enable_fsdp:
         print(f" eval_epoch_loss={eval_epoch_loss}, eval_epoch_ppl={eval_epoch_ppl}")
 
-    if wandb_run: 
+    if wandb_run:
         wandb_run.log({'eval/loss': eval_epoch_loss, 'eval/ppl': eval_epoch_ppl}, commit=False)
 
     return eval_epoch_loss, val_step_loss

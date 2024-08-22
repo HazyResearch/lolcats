@@ -236,7 +236,15 @@ class FeatureMapMLP(nn.Module):
         """
         with torch.no_grad():
             for i in range(self.layer.shape[0]):
-                nn.init.eye_(self.layer[i])
+                try:
+                    nn.init.eye_(self.layer[i])
+                except RuntimeError:
+                    with torch.no_grad():
+                        dtype = self.layer[i].dtype
+                        weight = torch.eye(*self.layer[i].shape,
+                                           requires_grad=self.layer[i].requires_grad,
+                                           device=self.layer[i].device)
+                        self.layer[i] = weight.to(dtype=dtype)
 
     def forward(self, x: torch.Tensor):
         """
