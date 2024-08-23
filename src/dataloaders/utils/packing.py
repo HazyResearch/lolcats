@@ -64,9 +64,17 @@ class ConcatDataset(Dataset):
             while len(next(iter(buffer.values()))) > self.chunk_size:
                 self.samples.append({k: v[:self.chunk_size] for k,v in buffer.items()})
                 buffer = {k: v[self.chunk_size:] for k,v in buffer.items()}
+        # Slow hack, but filter out any samples without valid labels (all -100)
+        self.filtered_samples = []
+        for s in self.samples:
+            if sum(s['labels']) != chunk_size * -100:
+                self.filtered_samples.append(s)
+        if len(self.filtered_samples) < len(self.samples):
+            print(f'OG dataset: {len(self.samples)} samples -> Filtered dataset: {len(self.filtered_samples)}')
+            print(f'-> Filtered out {len(self.samples) - len(self.filtered_samples)} samples')
                 
     def __getitem__(self, idx):
-        return self.samples[idx]
+        return self.filtered_samples[idx]
     
     def __len__(self):
-        return len(self.samples)
+        return len(self.filtered_samples)
