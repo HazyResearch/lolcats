@@ -167,6 +167,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         pbar.update(1)
                 else:
                     # regular backpropagation when fp16 is not used
+                    # if loss.sum() > 0:  # hack for non-answer targets
                     loss.backward()
                     if (total_step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                         if train_config.gradient_clipping and train_config.gradient_clipping_threshold > 0.0:
@@ -223,6 +224,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
+        train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
         if train_config.enable_fsdp:
             train_epoch_loss = train_epoch_loss/world_size
         train_perplexity = torch.exp(train_epoch_loss)
@@ -274,7 +276,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
     eval_loss = 0.0  # Initialize evaluation loss
     _epoch = f' {epoch}' if epoch is not None else ''
-    pbar = tqdm(eval_dataloader,colour="green", desc=f"Evaluating epoch{_epoch}", dynamic_ncols=True)
+    pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
         for key in batch.keys():
             if train_config.enable_fsdp:
@@ -297,12 +299,10 @@ def evaluate_lm(model, train_config, eval_dataloader,
             else:
                 eval_loss += loss.detach().float()
             _ppl = torch.exp(eval_loss/(step+1)).item()
-        pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
+        pbar.set_description(f"Rank {rank} | Eval Epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
-    if torch.cuda.device_count() > 1 and train_config.enable_fsdp:
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
