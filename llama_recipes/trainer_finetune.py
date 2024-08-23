@@ -304,6 +304,8 @@ def evaluate_lm(model, train_config, eval_dataloader,
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
+    elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:  # what's the diff b/t this condition and above?
+        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
     # print('len(eval_dataloader):', len(eval_dataloader))
