@@ -9,7 +9,7 @@ import torch.nn as nn
 
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
-from transformers import BitsAndBytesConfig
+# from transformers import BitsAndBytesConfig
 from peft import prepare_model_for_kbit_training
 
 
@@ -102,16 +102,17 @@ class PretrainedModelLoader():
             self.loading_kwargs['token'] = huggingface_token
 
         if self.quantization:
-            bnb_config = BitsAndBytesConfig(
-                load_in_8bit=load_in_8bit,
-                load_in_4bit=load_in_4bit,
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-            )
-            del self.loading_kwargs['load_in_8bit']
-            del self.loading_kwargs['load_in_4bit']
-            self.loading_kwargs['quantization_config'] = bnb_config
+            raise NotImplementedError
+            # bnb_config = BitsAndBytesConfig(
+            #     load_in_8bit=load_in_8bit,
+            #     load_in_4bit=load_in_4bit,
+            #     bnb_4bit_compute_dtype=torch.bfloat16,
+            #     bnb_4bit_use_double_quant=True,
+            #     bnb_4bit_quant_type="nf4",
+            # )
+            # del self.loading_kwargs['load_in_8bit']
+            # del self.loading_kwargs['load_in_4bit']
+            # self.loading_kwargs['quantization_config'] = bnb_config
         
     def load(self) -> nn.Module:
         """

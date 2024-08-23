@@ -37,7 +37,7 @@ def _rename_sharded(n: str) -> str:
     """
     n = n.replace('_fsdp_wrapped_module.','')
     n = n.replace('._checkpoint_wrapped_module', '')
-    n = n.replace('.mlp._flat_param', '.mlp.layer')
+    n = n.replace('.mlp._flat_param', '.mlp.layer')  # feature_map
     n = n.replace('._flat_param', '.weight')
     return n
 
@@ -53,9 +53,11 @@ def get_trainable_weights(model: torch.nn.Module) -> dict:
     # ])
     # But we still want to filter by params that require gradients
     state_dict = model.state_dict()
-    ignore_params = [_rename_sharded(n) for n, p in model.named_parameters() if not p.requires_grad]
-    for n in ignore_params:
-        del state_dict[n]
+    save_params = [_rename_sharded(n) for n, p in model.named_parameters() if p.requires_grad]
+    named_parameters = list(state_dict.keys())
+    for n in named_parameters:
+        if n not in save_params:
+            del state_dict[n]
     return state_dict
 
 
@@ -101,30 +103,35 @@ def get_date_of_run():
 fullstate_save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
 
 
-def load_model_sharded(model, rank, cfg, ignore_param_rule = None):
+def load_model_sharded(model, rank, cfg, ignore_param_rule = None, model_path: str = None):
+    
     # torch.manual_seed(103)
-    folder_name = (
-        cfg.dist_checkpoint_root_folder
-        + "/"
-        + cfg.dist_checkpoint_folder
-        + "-"
-        + cfg.model_name
-    )
+    if model_path is None:
+        folder_name = (
+            cfg.dist_checkpoint_root_folder
+            + "/"
+            + cfg.dist_checkpoint_folder
+            + "-"
+            + cfg.model_name
+        )
 
-    load_dir = Path.cwd() / folder_name
+        load_dir = Path.cwd() / folder_name
 
-    if not load_dir.exists():
+        if not load_dir.exists():
+            if rank == 0:
+                print(f"Error for {load_dir}:")
+                print(f"-> No sharded_state_dict checkpoint directory found...skipping")
+            return
         if rank == 0:
-            print(f"Error for {load_dir}:")
-            print(f"-> No sharded_state_dict checkpoint directory found...skipping")
-        return
-    if rank == 0:
-         print(f"loading model from model path: {load_dir} ")
+            print(f"loading model from model path: {load_dir} ")
+    else:
+        load_dir = Path(model_path)
+
     reader = FileSystemReader(load_dir)
 
     if ignore_param_rule is None:
         ignore_param_rule = lambda n, p: (
-            not p.requires_grad and 'feature_map' not in n or ('v_proj' in n or 'o_proj' in n)
+            not p.requires_grad   # and 'feature_map' not in n or ('v_proj' in n or 'o_proj' in n)
         )
 
     with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
@@ -132,9 +139,9 @@ def load_model_sharded(model, rank, cfg, ignore_param_rule = None):
 
         # trainable_weights(model)
         state_dict = model.state_dict()
-        ignore_params = [
+        save_params = [
             _rename_sharded(n)
-            for n, p in model.named_parameters() if ignore_param_rule(n, p)
+            for n, p in model.named_parameters() if not  ignore_param_rule(n, p)
             # n.replace('_fsdp_wrapped_module.','').replace('._checkpoint_wrapped_module', '').replace('.mlp._flat_param', '.mlp.layer').replace('._flat_param', '.weight')
             # for n, p in model.named_parameters() if (
             #     not p.requires_grad and 'feature_map' not in n or 
@@ -144,10 +151,17 @@ def load_model_sharded(model, rank, cfg, ignore_param_rule = None):
         ]
         if rank == 0:
             print_header('xxx Ignored parameters xxx')
-        for n in ignore_params:
-            if rank == 0: 
-                print(n)
-            del state_dict[n]
+        named_parameters = list(state_dict.keys())
+        for n in named_parameters:
+            if n not in save_params:
+                if rank == 0:
+                    print(n)
+                del state_dict[n]
+        # saved_parameters = [_rename_sharded(n) foor n, p in model.named_parameters() if not ignore_param_rule(n, p)]
+        # named_parameters = list(state_dict.keys())
+        # for n in named_parameters:
+        #     if n not in saved_parameters:
+        #         del state_dict[n]
         checkpoint = {"model": state_dict}
         if rank == 0:
             ck = checkpoint.keys()
@@ -192,14 +206,24 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
                               ):
         # state_dict = {"model": model.state_dict()}
         state_dict = model.state_dict()
+        if rank == 0:
+            print('-' * 10)
+            for n, p in model.named_parameters():
+                print('Original parameter:', n)
+                print(f'Renamed parameter: {_rename_sharded(n)}')
+            
         # state_dict = model.state_dict(state_dict_device='cpu')
-        ignore_params = [
+        save_params = [
             _rename_sharded(n)
             # n.replace('_fsdp_wrapped_module.','').replace('._checkpoint_wrapped_module', '').replace('.mlp._flat_param', '.mlp.layer').replace('._flat_param', '.weight')
-            for n, p in model.named_parameters() if not p.requires_grad
+            for n, p in model.named_parameters() if p.requires_grad
         ]
-        for n in ignore_params:
-            del state_dict[n]
+        named_parameters = list(state_dict.keys())
+        for n in named_parameters:
+            if n not in save_params:
+                del state_dict[n]
+        for k, v in state_dict.items():
+            print(k)
         # state_dict = {"model": get_trainable_weights(model)}
         state_dict = {"model": state_dict}
         if optim is not None:
@@ -242,12 +266,14 @@ def save_model_checkpoint(
         if rank == 0:
             print('Testing')
         state_dict = model.state_dict()
-        ignore_params = [
+        save_params = [
             n.replace('_fsdp_wrapped_module.','').replace('._checkpoint_wrapped_module', '').replace('.mlp._flat_param', '.mlp.layer').replace('._flat_param', '.weight')
-            for n, p in model.named_parameters() if not p.requires_grad
+            for n, p in model.named_parameters() if p.requires_grad
         ]
-        for n in ignore_params:
-            del state_dict[n]
+        named_parameters = list(state_dict.keys())
+        for n in named_parameters:
+            if n not in save_params:  # in state_dict:
+                del state_dict[n]
         cpu_state = state_dict
 
         print(f"saving process: rank {rank}  done w model state_dict\n")
