@@ -150,10 +150,6 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                       window_factors, linear_factors,
                                                       window_size=self.window_size)
-            # Save memory
-            a_true, _y_true = a_true.cpu(), _y_true.cpu()
-            a_pred, y_pred = a_pred.cpu(), y_pred.cpu()
-            torch.cuda.empty_cache()
             attn_weights = ((a_pred, a_true), (y_pred, _y_true))
         else:
             attn_weights = None
