@@ -20,9 +20,8 @@ from tqdm import tqdm
 
 # Ours
 import numpy as np
-from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available
-
+from llama_recipes.utils.memory_utils import MemoryTrace
 from llama_recipes.trainer_attention import (
     eval_loop, clear_gpu_cache, save_to_json,
     setup, setup_environ_flags,  # imports into distill_llama_finetune.py
@@ -38,7 +37,8 @@ class LossComputer():
         super().__init__()
         self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
 
-    def compute_loss(self, model: torch.nn.Module, data: torch.Tensor):
+    def compute_loss(self, model: torch.nn.Module, data: torch.Tensor, 
+                     rank: int = 0, local_rank: int = 0):
         """Compute the loss for attention distillation"""
         input_keys = {'input_ids'}  # , 'attention_mask'} (assume packing / no padding)
         inputs = {k: v.to(model.device) for k, v in data.items() if k in input_keys}  
@@ -48,15 +48,19 @@ class LossComputer():
         # Flatten and compute cross-entropy loss
         outputs = outputs.view(-1, outputs.shape[-1])
         targets = targets.view(-1).to(outputs.device)
-        loss = self.criterion(outputs, targets)
-        targets = targets.cpu()
-        outputs = outputs.cpu()
-        return loss  # , {'ppl': np.exp(loss.item()), 'seq_len': targets.shape[-1] + 1}
+        if (targets != -100).sum() == 0:
+            return torch.Tensor([0])[0]
+        else:
+            loss = self.criterion(outputs, targets)
+            targets = targets.cpu()
+            outputs = outputs.cpu()
+            # print(f'rank: {rank} | local_rank: {local_rank} | loss: {loss.item():.5f} | shape: {targets.shape} |')
+            return loss  # , {'ppl': np.exp(loss.item()), 'seq_len': targets.shape[-1] + 1}
 
 
-def train(model, train_dataloader, eval_dataloader, tokenizer, 
-          optimizer, lr_scheduler, gradient_accumulation_steps, 
-          train_config, fsdp_config=None, local_rank=None, rank=None, 
+def train(model, train_dataloader, eval_dataloader, tokenizer,
+          optimizer, lr_scheduler, gradient_accumulation_steps,
+          train_config, fsdp_config=None, local_rank=None, rank=None,
           wandb_run=None) -> dict[torch.Tensor]:
     """
     Trains the model on the given dataloader
@@ -114,7 +118,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     best_val_loss = float("inf")
     best_checkpoint_path = None
     total_step = 0
-    
+
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
         # print('-> epoch:', epoch)
@@ -138,12 +142,12 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         if is_xpu_available():
                             batch[key] = batch[key].to('xpu:0')
                         else:
-                            batch[key] = batch[key].to('cuda:0')              
+                            batch[key] = batch[key].to('cuda:0')
                 with autocast():
-                    loss = loss_computer.compute_loss(model, batch)
+                    loss = loss_computer.compute_loss(model, batch, rank, local_rank)
 
                 train_step_loss.append(loss.item())
-                train_step_perplexity.append(float(np.exp(loss.item()))) 
+                train_step_perplexity.append(float(np.exp(loss.item())))
                 loss = loss / gradient_accumulation_steps
                 total_loss += loss.detach().float()
 
@@ -163,6 +167,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         pbar.update(1)
                 else:
                     # regular backpropagation when fp16 is not used
+                    # if loss.sum() > 0:  # hack for non-answer targets
                     loss.backward()
                     if (total_step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                         if train_config.gradient_clipping and train_config.gradient_clipping_threshold > 0.0:
@@ -219,6 +224,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
+        train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
         if train_config.enable_fsdp:
             train_epoch_loss = train_epoch_loss/world_size
         train_perplexity = torch.exp(train_epoch_loss)
@@ -249,7 +255,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
 
 def evaluate_lm(model, train_config, eval_dataloader,
-                local_rank, tokenizer, wandb_run, epoch: int = None):
+                local_rank, tokenizer, wandb_run, 
+                epoch: int = None, rank: int = 0):
     """
     Evaluates the model on the given dataloader
 
@@ -278,22 +285,24 @@ def evaluate_lm(model, train_config, eval_dataloader,
                 if is_xpu_available():
                     batch[key] = batch[key].to('xpu:0')
                 else:
-                    batch[key] = batch[key].to('cuda:0')  
+                    batch[key] = batch[key].to('cuda:0')
         # Ensure no gradients are computed for this scope to save memory
         with torch.no_grad():
             # Forward pass and compute loss
-            loss = loss_computer.compute_loss(model, batch)
+            loss = loss_computer.compute_loss(model, batch, rank=rank, local_rank=local_rank)
             if train_config.save_metrics:
-                val_step_loss.append(loss.detach().cpu().float().item()) 
+                val_step_loss.append(loss.detach().cpu().float().item())
 
-            eval_loss += loss.detach().float()
+            # Check NaNs in loss
+            if torch.isnan(loss).any():
+                print("NaN detected in eval loss. Skipping evaluation accumulation.")
+            else:
+                eval_loss += loss.detach().float()
             _ppl = torch.exp(eval_loss/(step+1)).item()
         pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
-    if torch.cuda.device_count() > 1 and train_config.enable_fsdp:
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
@@ -306,6 +315,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
     eval_epoch_ppl = torch.exp(eval_epoch_loss).item()
     eval_epoch_loss = eval_epoch_loss.item()
+    del eval_loss; del batch
     clear_gpu_cache()
 
     # Print evaluation metrics
