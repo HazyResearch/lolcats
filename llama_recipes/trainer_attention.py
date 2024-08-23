@@ -390,8 +390,9 @@ def eval_loop(model, evaluate_func, optimizer, lr_scheduler,
     return save_path, val_step_loss, val_loss, best_val_loss, checkpoint_times
 
 
-def evaluate_attn(model, train_config, eval_dataloader, 
-                  local_rank, tokenizer, wandb_run, epoch: int = None):
+def evaluate_attn(model, train_config, eval_dataloader,
+                  local_rank, tokenizer, wandb_run,
+                  epoch: int = None, rank: int = 0):
     """
     Evaluates the model on the given dataloader
     Args:
