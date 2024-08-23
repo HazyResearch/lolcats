@@ -70,7 +70,7 @@ For now, we implement the causal linear attention with the CUDA kernel from [htt
 }
 ```
 
-To build the kernel (`causal_dot_product`), first activate the conda environment (`conda activate hedgehog`). Then navigate to `./csrc/` and run `python setup.py install` within `./csrc/`. It's worth checking the arguments in `./csrc/setup.py` to match your GPU setup and C++ versions.
+To build the kernel (`causal_dot_product`), first activate the conda environment (`conda activate lolcats`). Then navigate to `./csrc/` and run `python setup.py install` within `./csrc/`. It's worth checking the arguments in `./csrc/setup.py` to match your GPU setup and C++ versions.
 
 ### ThunderKittens linear attention + sliding window kernel
 
