@@ -206,11 +206,6 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
                               ):
         # state_dict = {"model": model.state_dict()}
         state_dict = model.state_dict()
-        if rank == 0:
-            print('-' * 10)
-            for n, p in model.named_parameters():
-                print('Original parameter:', n)
-                print(f'Renamed parameter: {_rename_sharded(n)}')
             
         # state_dict = model.state_dict(state_dict_device='cpu')
         save_params = [
@@ -222,8 +217,6 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
         for n in named_parameters:
             if n not in save_params:
                 del state_dict[n]
-        for k, v in state_dict.items():
-            print(k)
         # state_dict = {"model": get_trainable_weights(model)}
         state_dict = {"model": state_dict}
         if optim is not None:
@@ -231,7 +224,8 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
 
         if rank == 0:
             for k, v in state_dict['model'].items():
-                print(k, v.device)
+                if 'layers.0' in k:
+                    print(k, v.device)
         dist_cp.save_state_dict(
             state_dict=state_dict,
             storage_writer=distributed_writer,

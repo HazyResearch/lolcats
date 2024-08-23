@@ -54,7 +54,7 @@ class LossComputer():
             loss = self.criterion(outputs, targets)
             targets = targets.cpu()
             outputs = outputs.cpu()
-            print(f'rank: {rank} | local_rank: {local_rank} | loss: {loss.item():.5f} | shape: {targets.shape} |')
+            # print(f'rank: {rank} | local_rank: {local_rank} | loss: {loss.item():.5f} | shape: {targets.shape} |')
             return loss  # , {'ppl': np.exp(loss.item()), 'seq_len': targets.shape[-1] + 1}
 
 
@@ -167,6 +167,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         pbar.update(1)
                 else:
                     # regular backpropagation when fp16 is not used
+                    # if loss.sum() > 0:  # hack for non-answer targets
                     loss.backward()
                     if (total_step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                         if train_config.gradient_clipping and train_config.gradient_clipping_threshold > 0.0:
@@ -222,6 +223,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
+        train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
         train_epoch_loss = total_loss / len(train_dataloader) * gradient_accumulation_steps
         if train_config.enable_fsdp:
             train_epoch_loss = train_epoch_loss/world_size
@@ -301,8 +303,6 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
-    if torch.cuda.device_count() > 1 and train_config.enable_fsdp:
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
