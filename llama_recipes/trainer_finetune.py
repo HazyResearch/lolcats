@@ -48,10 +48,14 @@ class LossComputer():
         # Flatten and compute cross-entropy loss
         outputs = outputs.view(-1, outputs.shape[-1])
         targets = targets.view(-1).to(outputs.device)
-        loss = self.criterion(outputs, targets)
-        targets = targets.cpu()
-        outputs = outputs.cpu()
-        return loss  # , {'ppl': np.exp(loss.item()), 'seq_len': targets.shape[-1] + 1}
+        if (targets != -100).sum() == 0:
+            return torch.Tensor([0])[0]
+        else:
+            loss = self.criterion(outputs, targets)
+            targets = targets.cpu()
+            outputs = outputs.cpu()
+            # print(f'rank: {rank} | local_rank: {local_rank} | loss: {loss.item():.5f} | shape: {targets.shape} |')
+            return loss  # , {'ppl': np.exp(loss.item()), 'seq_len': targets.shape[-1] + 1}
 
 
 def train(model, train_dataloader, eval_dataloader, tokenizer, 
@@ -286,7 +290,11 @@ def evaluate_lm(model, train_config, eval_dataloader,
             if train_config.save_metrics:
                 val_step_loss.append(loss.detach().cpu().float().item()) 
 
-            eval_loss += loss.detach().float()
+            # Check NaNs in loss
+            if torch.isnan(loss).any():
+                print("NaN detected in eval loss. Skipping evaluation accumulation.")
+            else:
+                eval_loss += loss.detach().float()
             _ppl = torch.exp(eval_loss/(step+1)).item()
         pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
 
