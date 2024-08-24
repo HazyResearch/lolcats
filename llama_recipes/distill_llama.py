@@ -375,7 +375,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'llama' in model_config.model.pretrained_model_name_or_path:
+    if 'llama' in model_config.model.pretrained_model_name_or_path.lower():
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
@@ -490,6 +490,7 @@ def main():
             # device_mesh=hsdp_device_mesh,
             device_id=device_id,
             limit_all_gathers=True,
+            # limit_all_gathers=False,
             sync_module_states=args.low_cpu_fsdp,  # train_config.low_cpu_fsdp
             param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
             if args.low_cpu_fsdp and rank != 0 else None,
