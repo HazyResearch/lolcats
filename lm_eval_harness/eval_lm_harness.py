@@ -28,6 +28,7 @@ ZERO_SHOT = [
     ('arc-challenge', 0),
     ('arc-easy', 0),
     ('winogrande', 0),
+    ('hendrycks_test', 5),
 ]
 
 
