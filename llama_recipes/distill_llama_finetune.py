@@ -261,6 +261,7 @@ def main():
                                                      args.finetune_config)
     # finetune_config = update_config_from_args(finetune_config, args)
     finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
+    # Add option for gradient clipping
     if args.finetune_lr is not None:
         finetune_config.model_name += f'=flr={args.finetune_lr}'
             

@@ -54,3 +54,11 @@ finetune:
     lora_alpha: 16 # 32
     lora_dropout: 0.05
     target_modules: ["q_proj", "v_proj"] # ,"k_proj",  "o_proj"]
+
+fsdp:
+  save_model: true 
+  run_validation: true
+  use_fp16: false
+  save_optimizer: false
+  gradient_clipping: true  # false
+  gradient_clipping_threshold: 1.0

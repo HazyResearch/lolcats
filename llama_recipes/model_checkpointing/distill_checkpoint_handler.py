@@ -153,7 +153,7 @@ def load_model_sharded(model, rank, cfg, ignore_param_rule = None, model_path: s
             print_header('xxx Ignored parameters xxx')
         named_parameters = list(state_dict.keys())
         for n in named_parameters:
-            if n not in save_params:
+            if n not in save_params and 'window_factors' not in n:  # hack
                 if rank == 0:
                     print(n)
                 del state_dict[n]
@@ -215,7 +215,7 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
         ]
         named_parameters = list(state_dict.keys())
         for n in named_parameters:
-            if n not in save_params:
+            if n not in save_params and 'window_factors' not in n:  # hack
                 del state_dict[n]
         # state_dict = {"model": get_trainable_weights(model)}
         state_dict = {"model": state_dict}
