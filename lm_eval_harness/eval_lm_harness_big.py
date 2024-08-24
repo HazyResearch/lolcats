@@ -355,10 +355,16 @@ def main():
     lm.model = model
     model = lm
 
+    if args.task in ['mmlu', 'hendrycksTest']:
+        from lm_eval.tasks import TASK_REGISTRY
+        tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
+    else:
+        tasks = [args.task]
+
     results = evaluator.simple_evaluate(
         model=model,
         model_args='',
-        tasks=[args.task],
+        tasks=tasks,
         num_fewshot=args.num_shots,
         batch_size=1 if args.batch_size is None else args.batch_size,
         max_batch_size=1 if args.max_batch_size is None else args.max_batch_size,
@@ -375,6 +381,16 @@ def main():
         del results['config']['device']
     except:
         pass
+    if args.task in ['mmlu', 'hendrycksTest']:
+        mmlu_accs = []
+        for k, v in results['results'].items():
+            if args.task in k:
+                mmlu_accs.append(v['acc'])
+        print(mmlu_accs)
+        if len(mmlu_accs) > 0:
+            results['results']['mmlu'] = {'acc': sum(mmlu_accs) / len(mmlu_accs)}
+    
+        print('MMLU RESULT:', results['results']['mmlu'])
     print(results)
     if wandb is not None:
         wandb.log(results)
