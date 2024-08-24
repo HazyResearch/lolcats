@@ -88,7 +88,7 @@ def get_lm_eval_model(model_kwargs: dict,  # model_loader.loading_kwargs
     lm_kwargs['dtype'] = str(lm_kwargs['torch_dtype']).split('.')[-1]
     del lm_kwargs['torch_dtype']
 
-    lm_kwargs['use_cache'] = False
+    # lm_kwargs['use_cache'] = False
     lm_kwargs['output_attentions'] = False
     lm_kwargs['output_hidden_states'] = False
 
@@ -224,7 +224,7 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
 
     if attn_mlp_checkpoint_path is not None:
         # Update and load attentions
-        model = load_and_convert_attns(model, model_config, 
+        model = load_and_convert_attns(model, model_config,
                                        checkpoint_path=attn_mlp_checkpoint_path)[0]
         if 'peft' in model_config['attention']:  # Merge back q and k proj
             model = model.merge_and_unload()

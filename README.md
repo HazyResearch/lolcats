@@ -50,7 +50,9 @@ pretrained_config:
 
 ---
 
-### Causal linear attention CUDA kernel
+### Additional dependencies
+
+#### Causal linear attention CUDA kernel
 
 For now, we implement the causal linear attention with the CUDA kernel from [https://github.com/idiap/fast-transformers/tree/master](https://github.com/idiap/fast-transformers/tree/master), citing:
 
@@ -70,17 +72,29 @@ For now, we implement the causal linear attention with the CUDA kernel from [htt
 }
 ```
 
-To build the kernel (`causal_dot_product`), first activate the conda environment (`conda activate lolcats`). Then navigate to `./csrc/` and run `python setup.py install` within `./csrc/`. It's worth checking the arguments in `./csrc/setup.py` to match your GPU setup and C++ versions.
+To build the kernel (`causal_dot_product`), first check that the PyTorch CUDA version (e.g., as specified in the `environment.yaml`) matches that of your system.
+
+Then activate the conda environment (`conda activate lolcats`), navigate to `./csrc/`, and run `python setup.py install` within `./csrc/`, i.e.,
+
+```bash
+conda activate lolcats
+cd ./csrc/
+python setup.py install
+```
+
+It's worth checking the arguments in `./csrc/setup.py` to match your GPU setup and C++ versions.
 
 ### ThunderKittens linear attention + sliding window kernel
 
 TODO. [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
 
-### More
+#### More
 
 We're very excited to integrate additional developments like Songlin and friends' [flash-linear-attention](https://github.com/sustcsonglin/flash-linear-attention)
 
-### Flash Attention 2 install
+---
+
+#### Flash Attention 2 install
 
 To train subquadratic analogs with Flash Attention 2 (FA2), we recommend following Tri's default instructions [here](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 
@@ -212,7 +226,25 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 
 #### LM Evaluation Harness
 
-For sample LM Eval scripts, please see `./lm_eval_harness/README.md`. In particular, this will involve cloning the Language Model Evaluation Harness from [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/b281b0921b636bc36ad05c0b0b0763bd6dd43463). Note we use the `b281b09` branch following Hugging Face's [Open LLM Leaderboard](https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard).
+For sample LM Eval scripts, please see `./lm_eval_harness/README.md`. An example such script is:
+
+```bash
+python lm_eval_harness/eval_lm_harness.py \
+--model_type lolcats_ckpt \
+--attn_mlp_checkpoint_path ./checkpoints/distill_mistral_7b_lk_smd_wtk64_fd64_w01/dl-d=distill_alpaca_clean_xent0_mse1000_lr1e-2-m=distill_mistral_7b_lk_smd_wtk64_fd64_w01-f=finetune_long_lora_qkvo_alpaca_clean-s=0-gas=8-nte=2-se=0-re=614-scl=1024-lzi=1_distill.pt \
+--finetune_checkpoint_path ./checkpoints/distill_mistral_7b_lk_smd_wtk64_fd64_w01/dl-d=dacxmldm7lswfwfllqac082061_lzi=1_distill1d-m=distill_mistral_7b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_alpaca_clean-s=0-gas=8-nte=2-se=0-re=614-scl=1024-lzi=1-gas=8-nte=2-se=0-re=614_ft.pt \
+--task piqa --num_shots 0  --no_cache --verbose
+```
+
+To setup the evaluations, we clone the Language Model Evaluation Harness from [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/b281b0921b636bc36ad05c0b0b0763bd6dd43463) to a separate directory (e.g., outside the lolcats directory).
+
+- Note we use the `b281b09` branch following Hugging Face's [Open LLM Leaderboard](https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard).
+
+We then point to this path in `./lm_eval_harness/eval_lm_harness.py`, e.g.
+
+```python
+LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
+```
 
 ---
 
@@ -301,4 +333,22 @@ wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/
 bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
 rm -rf ~/miniconda3/miniconda.sh
 ~/miniconda3/bin/conda init bash
+```
+
+### `causal_dot_product` kernel installation
+
+If running `python setup.py install` in `./csrc/` fails, try making sure your environment's CUDA version matches that of your system. In our case, specifying
+
+```yaml
+- pytorch-cuda=12.1
+```
+
+in `environment.yaml` for a system with CUDA 12.2 worked.
+
+Also consider checking that your CUDA install is accessible, e.g., by adding the following to your `.bashrc`:
+
+```
+export CUDA_HOME=/usr/local/cuda-12.2/
+export PATH=${CUDA_HOME}/bin:${PATH}
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:$LD_LIBRARY_PATH
 ```

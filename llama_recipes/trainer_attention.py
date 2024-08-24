@@ -61,6 +61,7 @@ class LossComputer():
         self.n_queries = n_queries
         self.n_keys = n_keys
 
+
     def compute_loss(self, model: torch.nn.Module, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the loss for attention distillation"""
         loss = 0
@@ -69,7 +70,11 @@ class LossComputer():
         n_layers = 0  # Number of layers to distill
         outputs = model(**inputs, output_attentions=True, use_cache=False).get('attentions')        
         for _, attns in enumerate(outputs):
+            # ((a_pred, a_true), (y_pred, _y_true))
+
             if attns is not None:
+
+                # attention_pred, attention_true (probability distributions)
                 if self.xent_factor > 0:
                     # Cross-entropy loss
                     a_pred, a_true = attns[0]
@@ -87,20 +92,39 @@ class LossComputer():
                     # a_true = a_true.detach().cpu()
                     # loss_xent += self.criterion_xent(a_pred.to(model.device), 
                     #                                  a_true.to(model.device))
+
+                # y_preds, y_true (raw values)
                 if self.mse_factor > 0:
-                    loss_mse += self.criterion_mse(*attns[1])
+                    # 
+                    loss_mse += self.criterion_mse(*attns[1]) 
                     # attns[1][0] = attns[1][0].detach().cpu()
                     # attns[1][1] = attns[1][1].detach().cpu()
                     # loss_mse += self.criterion_mse(*[a.to(model.device) for a in attns[1]])
                 n_layers += 1
                 # torch.cuda.empty_cache()
+        
         if n_layers > 0:
             loss_xent = loss_xent * self.xent_factor / n_layers
             loss_mse = loss_mse * self.mse_factor / n_layers
-        loss = (loss_xent + loss_mse)
+        
+        if ( type(loss_xent) == float ): 
+            loss = loss_mse
+        elif ( type(loss_mse) == float ):
+            loss = loss_xent
+        else:
+            loss = (loss_xent + loss_mse)
+            
+        try:
+            loss_xent = loss_xent.item()
+        except:
+            pass 
+        try:
+            loss_mse = loss_mse.item()
+        except:
+            pass
         loss_metrics = {
-            'loss_xent': loss_xent.item(), 
-            'loss_mse': loss_mse.item(), 
+            'loss_xent': loss_xent, 
+            'loss_mse': loss_mse, 
             'loss': loss.item(),
             'xent_factor': self.xent_factor,
             'mse_factor': self.mse_factor,
@@ -192,7 +216,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             if is_xpu_available():
                                 batch[key] = batch[key].to('xpu:0')
                             else:
-                                batch[key] = batch[key].to('cuda:0')        
+                                batch[key] = batch[key].to('cuda:0')
                 with autocast():
                     loss, loss_metrics = loss_computer.compute_loss(model, batch)
                 loss = loss / gradient_accumulation_steps
@@ -525,6 +549,7 @@ def get_parameter_dtypes(model):
         parameter_dtypes[name] = parameter.dtype
     return parameter_dtypes
 
+
 def print_model_size(model, config, rank: int = 0) -> None:
     """
     Print model name, the number of trainable parameters and initialization time.
@@ -579,6 +604,7 @@ def get_policies(cfg, rank, model: str = 'llama'):
         wrapping_policy = get_mixtral_wrapper()
     return mixed_precision_policy, wrapping_policy
 
+
 def save_train_params(train_config, fsdp_config, rank):
     """
     This function saves the train_config and FSDP config into a train_params.yaml.
@@ -617,6 +643,7 @@ def save_train_params(train_config, fsdp_config, rank):
             f.write(config_yaml)
         if rank==0:
             print(f"training params are saved in {file_name}")
+
 
 def save_to_json(output_filename,
                  train_step_loss, train_epoch_loss,

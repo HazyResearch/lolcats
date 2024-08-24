@@ -56,7 +56,7 @@ def get_trainable_weights(model: torch.nn.Module) -> dict:
     save_params = [_rename_sharded(n) for n, p in model.named_parameters() if p.requires_grad]
     named_parameters = list(state_dict.keys())
     for n in named_parameters:
-        if n not in save_params:
+        if n not in save_params and 'window_factors' not in n:  # hack
             del state_dict[n]
     return state_dict
 
@@ -88,6 +88,7 @@ def load_trainable_weights(model: torch.nn.Module, checkpoint: dict[any], rank: 
                 print(k)
             print('=' * 20)
     return model
+
 
 def get_date_of_run():
     """
@@ -135,19 +136,10 @@ def load_model_sharded(model, rank, cfg, ignore_param_rule = None, model_path: s
         )
 
     with FSDP.state_dict_type(model, StateDictType.SHARDED_STATE_DICT):
-        # checkpoint = {"model": model.state_dict()}
-
-        # trainable_weights(model)
         state_dict = model.state_dict()
         save_params = [
             _rename_sharded(n)
             for n, p in model.named_parameters() if not  ignore_param_rule(n, p)
-            # n.replace('_fsdp_wrapped_module.','').replace('._checkpoint_wrapped_module', '').replace('.mlp._flat_param', '.mlp.layer').replace('._flat_param', '.weight')
-            # for n, p in model.named_parameters() if (
-            #     not p.requires_grad and 'feature_map' not in n or 
-            #     ('v_proj' in n or 'o_proj' in n)
-            #     # hard-coded hack for default config where we finetune value and output projections
-            # )
         ]
         if rank == 0:
             print_header('xxx Ignored parameters xxx')
@@ -157,11 +149,6 @@ def load_model_sharded(model, rank, cfg, ignore_param_rule = None, model_path: s
                 if rank == 0:
                     print(n)
                 del state_dict[n]
-        # saved_parameters = [_rename_sharded(n) foor n, p in model.named_parameters() if not ignore_param_rule(n, p)]
-        # named_parameters = list(state_dict.keys())
-        # for n in named_parameters:
-        #     if n not in saved_parameters:
-        #         del state_dict[n]
         checkpoint = {"model": state_dict}
         if rank == 0:
             ck = checkpoint.keys()
@@ -266,7 +253,7 @@ def save_model_checkpoint(
         ]
         named_parameters = list(state_dict.keys())
         for n in named_parameters:
-            if n not in save_params:  # in state_dict:
+            if n not in save_params and 'window_factors' not in n:  # hack
                 del state_dict[n]
         cpu_state = state_dict
 
