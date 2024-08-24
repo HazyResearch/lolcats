@@ -58,8 +58,25 @@ class InstructionDataset(Dataset):
         )
         labels = copy.deepcopy(example)
         labels[: len(prompt)] = -1
+
         example_mask = example.ge(0)
         label_mask = labels.ge(0)
+
+        # SA: Check for all -100 
+        num_masked_elements = (~label_mask).sum().item()
+        num_elements = (labels).sum().item()
+        if (num_masked_elements == num_elements): 
+            print(f"Warning: All {total_elements} elements in labels were initially masked. Randomly unmasking some elements.")
+            num_to_unmask = 2
+            all_indices = list(range(total_elements))
+            indices_to_unmask = random.sample(all_indices, num_to_unmask)    
+            for idx in indices_to_unmask:
+                if idx < num_elements:
+                    labels[idx] = example[idx+1]  # Set label to the corresponding example value
+                    label_mask[idx] = True        # Update the mask
+    
+            print(f"Unmasked {num_to_unmask} elements.")
+        
         example[~example_mask] = 0
         labels[~label_mask] = IGNORE_INDEX
 
