@@ -1,14 +1,14 @@
 dataset:
   name: alpaca_clean
   dataset_config:
-    name: alpaca
+    name: default
     path: yahma/alpaca-cleaned
     chunk_size: 1024 # 2048
     concat_data: true
     cache_dir: "data/"
   pretrained_model_config:
     pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/scr-ssd/mzhang/models/llama-3_1-70b" # Set this to where you want to save checkpoint weights
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-8b/" # Set this to where you want to save checkpoint weights
   preprocess_config: null
 
 dataloader:

@@ -1,7 +1,7 @@
 dataset:
   name: alpaca_clean
   dataset_config:
-    name: alpaca
+    name: default
     path: yahma/alpaca-cleaned
     chunk_size: 1024  # sequence length for distilling
     concat_data: true
