@@ -23,7 +23,6 @@ OPEN_LLM = [  # task, shots
     ('gsm8k', 5),
 ]
 ZERO_SHOT = [
-    ('lambada_openai', 0),
     ('hellaswag', 0),
     ('piqa', 0),
     ('arc-challenge', 0),
@@ -34,9 +33,9 @@ ZERO_SHOT = [
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='hedgehog-eval')
+    parser.add_argument("--project_name", type=str, default='lolcats-eval')
     parser.add_argument("--model_type", type=str, default=None,
-                        choices=['hedgehog_ckpt', 'model_config', 'huggingface'])
+                        choices=['lolcats_ckpt', 'model_config', 'huggingface'])
     parser.add_argument("--model_config", type=str, default=None)
     parser.add_argument("--cache_dir", type=str, default=None)
     
@@ -65,7 +64,7 @@ def get_args():
     args = parser.parse_args()
 
     args.run_name = f'd={args.task}-ns={args.num_shots}'
-    if args.model_type == 'hedgehog_ckpt':
+    if args.model_type == 'lolcats_ckpt':
         if args.finetune_checkpoint_path is not None:
             args.run_name += f"-c={args.finetune_checkpoint_path.split('/')[-1]}"
     elif args.model_type == 'model_config':
@@ -92,7 +91,7 @@ def main():
     from lm_eval import evaluator
     
     args = get_args()
-    if args.model_type == 'hedgehog_ckpt':  # load hedgehog model
+    if args.model_type == 'lolcats_ckpt':  # load hedgehog model
         model, model_config, tokenizer = load_model_from_checkpoint(
             attn_mlp_checkpoint_path=args.attn_mlp_checkpoint_path,
             finetune_checkpoint_path=args.finetune_checkpoint_path,
