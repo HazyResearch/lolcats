@@ -276,7 +276,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
     eval_loss = 0.0  # Initialize evaluation loss
     _epoch = f' {epoch}' if epoch is not None else ''
-    pbar = tqdm(eval_dataloader,colour="green", desc=f"Evaluating epoch{_epoch}", dynamic_ncols=True)
+    pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
         for key in batch.keys():
             if train_config.enable_fsdp:
@@ -299,10 +299,12 @@ def evaluate_lm(model, train_config, eval_dataloader,
             else:
                 eval_loss += loss.detach().float()
             _ppl = torch.exp(eval_loss/(step+1)).item()
-        pbar.set_description(f"Evaluating epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
+        pbar.set_description(f"Rank {rank} | Eval Epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
+        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
+    elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:  # what's the diff b/t this condition and above?
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
