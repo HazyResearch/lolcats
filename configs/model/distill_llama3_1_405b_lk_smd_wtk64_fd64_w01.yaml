@@ -1,12 +1,14 @@
 name: llama
 model:
-  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-405B"
-  cache_dir: "/scr-ssd/mzhang/models/llama-3_1-405b" # Set this to where you want to save checkpoint weights
+  # pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-8B"
+  pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
+  # cache_dir: "/data_ephemeral/rahul/models/llama-3_1-405b" # Set this to where you want to save checkpoint weights
+  cache_dir: null
   return_dict: true
   load_in_8bit: false
   load_in_4bit: false
-  device_map: auto
-  low_cpu_mem_usage: true
+  device_map: null
+  low_cpu_mem_usage: false
   torch_dtype: bfloat16
   attn_implementation: flash_attention_2
   rope_theta: 500000.0
@@ -18,7 +20,7 @@ model:
     rope_type: llama3
 
 attention:
-  attention_type: lolcats_llama_window_tk
+  attention_type: lolcats_llama_window_tk_faster
   state_chunk_len: 1024
   window_size: 64
   affine_attention_factors: false

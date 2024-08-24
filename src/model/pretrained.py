@@ -63,7 +63,7 @@ class PretrainedModelLoader():
                  pretrained_model_name_or_path: str,
                  cache_dir: str = None,
                  return_dict: bool = True,  # False
-                 device_map: str = 'auto',
+                 device_map: str = None,
                  low_cpu_mem_usage: bool = True,
                  torch_dtype: str = 'bfloat16',
                  rope_theta: float = 10000.,
@@ -131,6 +131,8 @@ class PretrainedModelLoader():
         Load pretrained tokenizer
         """
         try:
+            print("-> Loading tokenizer from AutoTokenizer")
+            print(self.loading_kwargs)
             return AutoTokenizer.from_pretrained(**self.loading_kwargs)
         except Exception as e:
             print("-> Error with `AutoTokenizer.from_pretrained(**self.loading_kwargs)`:", e)

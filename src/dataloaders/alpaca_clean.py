@@ -22,7 +22,7 @@ from .utils import (
     get_lm_loader, get_seq2seq_loader,
     convert_to_hf_dataset, 
     get_tokenizer_from_config,
-    download_scrolls_metric as download_metric
+    # download_scrolls_metric as download_metric
 )
 from .utils.packing import ConcatDataset
 
@@ -107,12 +107,12 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         'test': get_seq2seq_loader(test_set, tokenizer, 'test', **loader_kwargs),
     }
     # Evaluation metric
-    metric = load_metric(download_metric(), 'gov_report')  # hack but we want rouge
+    # metric = load_metric(download_metric(), 'gov_report')  # hack but we want rouge
 
     # Finishing touches
     for k, v in dataloaders.items():  # Make tokenizer accessible
         dataloaders[k].dataset.tokenizer = tokenizer
-        dataloaders[k].dataset.metric = metric
+        # dataloaders[k].dataset.metric = metric
     return dataloaders
 
 
