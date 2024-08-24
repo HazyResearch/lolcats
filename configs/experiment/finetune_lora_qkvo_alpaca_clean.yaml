@@ -1,14 +1,14 @@
 dataset:
   name: alpaca_clean
   dataset_config:
-    name: alpaca
+    name: default
     path: yahma/alpaca-cleaned
     chunk_size: 1024
     concat_data: true
     cache_dir: "data/alpaca"
   pretrained_model_config:
     pretrained_model_name_or_path: "mistralai/Mistral-7B-v0.1" # will be updated based on model_config
-    cache_dir: "/juice/scr/scr110/scr/nlp/data/neo/hub/"
+    cache_dir: "/data_persistent2/sim_data/"
   preprocess_config: null
 
 dataloader:
