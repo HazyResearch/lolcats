@@ -1,26 +1,5 @@
 """
 Evaluate models with lm-evaluation-harness
-
-python lm_eval_harness/eval_lm_harness_big.py \
---model_config distill_mixtral_8x7b_lk_smd_tqk_lora_eins \
---distill_config distill_alpaca_clean_mixtral_lr1e-3 \
---finetune_config finetune_lora_qkvo_alpaca_clean_mixtral \
---eval_config eval_alpaca_clean_mixtral --learned_kernel untied_head_einsum --lk_skip_connection \
---verbose --replicate 64 --seed 0 --enable_fsdp --low_cpu_fsdp \
---replicate 64 --num_train_epochs 8 --seed 42 \
---task hellaswag --num_shots 0 --no_cache
-
-
-Evaluating cmd 5 (3739831.h5)
-python lm_eval_harness/eval_lm_harness.py --model_type hedgehog_ckpt \
---attn_mlp_checkpoint_path /juice2/scr2/mzhang/projects/hedgehog-distill/checkpoints/distill_mistral_7b_lk_esn_tqk_lora/d=distill_alpaca_clean_mistral-m=distill_mistral_7b_lk_esn_tqk_lora-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=0-lk=untied_head-lsc=1_distill.pt \
---finetune_checkpoint_path /juice2/scr2/mzhang/projects/hedgehog-distill/checkpoints/distill_mistral_7b_lk_esn_tqk_lora/d=distill_alpaca_clean_mistral-m=distill_mistral_7b_lk_esn_tqk_lora-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=0-lk=untied_head-lsc=1-bs=1-gas=8-nte=2-ms=-1-es=100-se=0-re=0_ft.pt \
---task hellaswag --num_shots 0 --no_cache
-
-Alpaca-Lora-Mistral
-python lm_eval_harness/main.py --model_type hedgehog_ckpt \
---finetune_checkpoint_path /juice2/scr2/mzhang/projects/hedgehog-distill/checkpoints/distill_mistral_7b_lk_esn_tqk_lora/d=distill_alpaca_clean_mistral-m=distill_mistral_7b_lk_esn_tqk_lora-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=0-lk=untied_head-lsc=1-bs=1-gas=8-nte=2-ms=-1-es=100-se=0-re=0_ft.pt \
---task hellaswag --num_shots 0 --no_cache
 """
 import copy
 import sys
@@ -35,22 +14,25 @@ from tqdm import tqdm
 import torch
 
 # Modeling loading imports
-from setup import seed_everything
-from setup import update_config_from_args, flatten_config
-from logging_utils import print_header, print_config, _format_arg
+from src.utils.setup import (
+    seed_everything, update_config_from_args, update_model_config_from_args,
+    flatten_config
+)
+from src.utils.logging import (
+    print_header, print_config, _format_arg
+)
 
-from finetune import prepare_finetune_configs
+from src.finetune import prepare_finetune_configs
 
-from model.load_hedgehog import load_and_convert_attns
-from model.load_hedgehog import load_and_convert_finetune
-from model.pretrained import get_pretrained_loader
+from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
+from src.model.pretrained import get_pretrained_loader
 
-from llama_recipes.model_setup import update_model_config_from_args
-from llama_recipes.model_setup import toggle_attention, remove_base_attention
+# from llama_recipes.model_setup import update_model_config_from_args
+# from llama_recipes.model_setup import toggle_attention, remove_base_attention
 from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_sharded_model_single_gpu,
 )
-from llama_recipes.finetune_trainer_test import print_model_size
+from llama_recipes.trainer_finetune import print_model_size
 
 # LM evaluation imports
 # from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
@@ -89,6 +71,10 @@ def get_args():
     parser.add_argument("--eval_config", type=str, default=None)
     parser.add_argument("--config_dir", type=str, default='./configs')
 
+    # Or just load the paths directly
+    parser.add_argument("--attn_mlp_checkpoint_path", type=str, default=None)
+    parser.add_argument("--finetune_checkpoint_path", type=str, default=None)
+
     # Override default configs
     parser.add_argument("--huggingface_token", type=str, default=None)
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
@@ -99,7 +85,9 @@ def get_args():
     parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
     parser.add_argument("--train_qk", action='store_true', default=None)
 
+    parser.add_argument("--dataset_chunk_size", type=int, default=None)
     parser.add_argument("--num_train_epochs", type=int, default=None)
+    parser.add_argument("--eval_steps", type=int, default=None)
 
     ## Distributed training / Llama recipes
     parser.add_argument("--enable_fsdp", action='store_true', default=None)
@@ -139,7 +127,7 @@ def get_args():
     #     args.model_name += f'-npgc={args.no_peft_grad_ckpt}'
     if args.fsdp_activation_checkpointing is not None:
         args.run_name += f'-fac={args.fsdp_activation_checkpointing}'
-    args.run_name += f'-s={args.seed}'
+    # args.run_name += f'-s={args.seed}'
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
 
     # Run name for evaluation
@@ -344,7 +332,7 @@ def main():
         #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
         # else:
         #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
-        model = load_sharded_model_single_gpu(model, model_path=None, 
+        model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
                                               cfg=distill_config, rank=rank)
         
     # ----------------------------
@@ -361,7 +349,7 @@ def main():
                                                       merge_loras=False,
                                                       peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
     if rank == 0:
-        model = load_sharded_model_single_gpu(model, model_path=None,
+        model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
                                               cfg=finetune_config, rank=rank)
     # Back to LM Eval model
     lm.model = model
