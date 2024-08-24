@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 from src.utils.logging import print_header, _format_arg
 from .convert_model import convert_attention
 from .peft import create_peft_config
+from src.model.utils import count_parameters
 
 
 def load_and_convert_attns(model: nn.Module,
@@ -86,6 +87,15 @@ def load_and_convert_attns(model: nn.Module,
         for n, p in model.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
+        model_train_params = count_parameters(model, requires_grad=True)
+        model_total_params = count_parameters(model, requires_grad=False)
+        pct_trainable = model_train_params / model_total_params
+
+        print_header('*** Distillation Parameter Counts ***')
+
+        print(f'├── Number training to distill:  {model_train_params}')
+        print(f'├── Number of total parameters:  {model_total_params}')
+        print(f'├── Percent training to distill: {pct_trainable * 100:.3f}%')
     return model, peft_config
 
 
