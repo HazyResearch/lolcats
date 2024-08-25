@@ -245,10 +245,14 @@ def main():
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
-        if args.load_distill_checkpoint is not None:
-            model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+        
+        if distill_config.trainer.name is not None:
+            if args.load_distill_checkpoint is not None:
+                model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+            else:
+                model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
         else:
-            model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
+            print(" -> Proceeding without learned linear attentions")
     
     #     model.print_trainable_parameters()
     if wandb_run and distill_peft_config is not None:
@@ -261,7 +265,6 @@ def main():
                                                      args.finetune_config)
     # finetune_config = update_config_from_args(finetune_config, args)
     finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
-    # Add option for gradient clipping
     if args.finetune_lr is not None:
         finetune_config.model_name += f'=flr={args.finetune_lr}'
             
@@ -362,7 +365,7 @@ def main():
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
     # scheduler = StepLR(optimizer, step_size=1, gamma=train_config.gamma)
-    scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)
+    scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
 
     if args.verbose and rank == 0:
         print('-> Optimizer:', optimizer)
