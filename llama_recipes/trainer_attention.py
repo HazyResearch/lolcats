@@ -15,6 +15,8 @@ from datetime import datetime
 from pkg_resources import packaging
 import yaml
 
+print(f"{os.environ['WORLD_SIZE']=}")
+
 import torch
 import torch.nn as nn
 import torch.cuda.nccl as nccl
@@ -154,6 +156,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         results dictionary containing average training and validation loss
         best_checkpoint_path: The path to the best checkpoint
     """
+    assert len(eval_dataloader) > 0, print(f"{len(eval_dataloader)=}")
     loss_computer = LossComputer(**train_config.trainer)
 
     if rank == 0 or rank is None:
@@ -170,7 +173,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         scaler = torch.cuda.amp.GradScaler()
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"]) 
-        # print('-> world_size:', world_size)
+        print('-> world_size:', world_size)
 
     autocast = torch.cuda.amp.autocast if train_config.use_fp16 else nullcontext
 
@@ -460,18 +463,22 @@ def evaluate_attn(model, train_config, eval_dataloader,
             desc += f" | {k}: {v:.5f}"
         pbar.set_description(desc)
 
+    def ensure_tensor(value, device):
+        if not isinstance(value, torch.Tensor):
+            return torch.tensor([value], device=device)
+        return value
+
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
+        dist.all_reduce(ensure_tensor(eval_loss, 'cuda'), op=dist.ReduceOp.SUM)
     if torch.cuda.device_count() > 1 and train_config.enable_fsdp:
-        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
+        dist.all_reduce(ensure_tensor(eval_loss, 'cuda'), op=dist.ReduceOp.SUM)
 
     # Compute average loss
-    # print('len(eval_dataloader):', len(eval_dataloader))
-    # print('step + 1:', step + 1)
-    # print('world_size:', world_size)
+    print(f"{len(eval_dataloader)=}")
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     if train_config.enable_fsdp:
+        print(f"{world_size=}")
         eval_epoch_loss = eval_epoch_loss/world_size
 
     eval_epoch_loss = eval_epoch_loss.cpu().float().item()

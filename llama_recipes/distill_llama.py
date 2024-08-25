@@ -120,6 +120,7 @@ def get_args():
     parser.add_argument("--low_cpu_fsdp", action='store_true', default=None)
     parser.add_argument("--pure_bf16", action='store_true', default=None)
     parser.add_argument("--fsdp_activation_checkpointing", action='store_true', default=None)
+    parser.add_argument("--fsdp_cpu_offload", action='store_true', default=None)
     
     ## Hyperparameters
     parser.add_argument("--lr", type=float, default=None)
@@ -368,11 +369,14 @@ def main():
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
 
-    if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-        print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-        model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-    
-    model_config.model.pop("pretrained_model_name_or_path_backup")
+    try:
+        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
+            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
+            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    except:
+        print(f"Model without model.pretrained_model_name_or_path_backup path")
+        pass
 
     model_loader = get_pretrained_loader(**model_config.model,
                                          huggingface_token=args.huggingface_token)
