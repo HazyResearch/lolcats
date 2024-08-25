@@ -1,5 +1,6 @@
 """
 Evaluate models with lm-evaluation-harness
+- Right now does a heinous manual pipelining of model layers across devices
 """
 import copy
 import sys
@@ -212,6 +213,13 @@ def main():
     args = get_args()
     seed_everything(args.seed)
     rank = 0
+
+    # if args.attn_mlp_checkpoint_path is not None or args.finetune_checkpoint_path is not None:
+    #     args.model_config = args.attn_mlp_checkpoint_path.split('/')[-2]
+    #     if args.attn_mlp_checkpoint_path is not None:
+    #         args.distill_config = args.attn_mlp_checkpoint_path.split('-d=')[-1].split('-m=')[0]
+    #     if args.finetune_checkpoint_path is not None:
+    #         args.finetune_config = args.finetune_checkpoint_path.split('-f=')[-1].split('-')[0]
 
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
