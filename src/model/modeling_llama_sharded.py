@@ -114,7 +114,9 @@ class ShardedLolcatsLlamaModel(LlamaModel):
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
-        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        # - ignored for linearized models
+        position_embeddings = None
+        # position_embeddings = self.rotary_emb(hidden_states, position_ids.to(hidden_states.device))
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
