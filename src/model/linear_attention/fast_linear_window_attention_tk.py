@@ -32,7 +32,6 @@ import inspect
 _flash_supports_window_size = "window_size" in list(inspect.signature(flash_attn_func).parameters)
 assert _flash_supports_window_size, "flash_attn_func does not support window_size"
 
-
 try:
     from fla.ops.based import fused_chunk_based, parallel_based
     from fla.ops.based.naive import naive_parallel_based
@@ -62,21 +61,21 @@ def hybrid_attention(
     eps: float = 1e-12,
     **kwargs
 ):
+    # 1. SWA
+    v_slide = v.transpose(1,2)
     o_slide = flash_attn_func(
-        q, k, v.transpose(1,2),
-        0.0, # dropout
-        causal=True,
+        q, k, v_slide, 0.0, causal=True,
         window_size=(window_size, 0), 
-    )
+    ).transpose(1,2)
 
     # 2. Under window (linear attention)
     o, recurrent_state = fused_chunk_linear_attn(
         f_q.float(), f_k.float(), v.float(),  
-        normalize=True
+        normalize=False
     )
 
     # 3. Combine
-    y = linear_factor * o.to(f_q.dtype) + window_factor * o_slide.transpose(1,2)
+    y = linear_factor * o.to(f_q.dtype) + window_factor * o_slide
     return y
 
 
@@ -131,18 +130,13 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
         if self.train_attention:
             # 1. Compute "ground-truth" attention output and weights
             with torch.no_grad():
-                """
-                q: (batch_size, seqlen, nheads, headdim)
-                k: (batch_size, seqlen, nheads_k, headdim)
-                v: (batch_size, seqlen, nheads_k, headdim)
-                """
-                q = q.transpose(1,2)
-                k = k.transpose(1,2)
-                # print(f"{q.shape=}, {v.shape=}")
+                q_true = q.transpose(1,2)
+                k_true = k.transpose(1,2)
+                v_true = v.transpose(1,2)
                 with torch.no_grad():
                     _y_true = flash_attn_func(
-                        q, k, v.transpose(1,2),
-                        0.0, # dropout
+                        q_true, k_true, v_true,
+                        0.0, 
                         causal=True,
                     ).transpose(1,2)
                     y_true = _y_true.reshape(b, l, -1).contiguous()
@@ -151,15 +145,12 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
             # 2. Compute "predicted" attention outputs; compute attn under sliding window
             window_factors = F.sigmoid(self.window_factors)
             linear_factors = 1 - window_factors if self.affine_attention_factors else 1
-            # print(f"{q.dtype=}; {k.dtype=}; {v.dtype=}; {f_q.dtype=}; {f_k.dtype=}")
             y_pred = self.quadratic_attention(
-                q, k, f_q, f_k, v,
+                q_true, k_true, f_q, f_k, v,
                 window_factors, linear_factors,
                 window_size=self.window_size
             )
-            # print(f"{y_pred.dtype=}; {_y_true.dtype=}")
-            attn_weights = ((None, None), (y_pred, _y_true))
-        
+            attn_weights = ((None, None), (y_pred, _y_true))        
         else:
             attn_weights = None
             # attention_mask = None  # For now this is always True
@@ -185,15 +176,14 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
                     # Softmax attention terms
                     a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k_cache.float()) * (k.shape[-1] ** -0.5)
                     a_sm_max = torch.amax(a_sm, dim=-1, keepdim=True)
-                    a_sm   = window_factors * torch.exp(a_sm - a_sm_max)
+                    a_sm   = torch.exp(a_sm - a_sm_max)
                     sum_sm = a_sm.sum(dim=-1, keepdim=True)
+                    y_slide = torch.einsum('bhmn,bhnd->bhmd', a_sm/sum_sm, v_cache.float()) # CORRECT?
 
+                    y_lin = linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float())
+                    
                     # Combine with linear attention terms
-                    y_true = (torch.einsum('bhmn,bhnd->bhmd', a_sm, v_cache.float())
-                              + linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float()))
-                    sum_ln = linear_factors * torch.einsum(
-                        'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
-                    y_true = (y_true / (sum_sm + sum_ln)).to(q.dtype) 
+                    y = linear_factor * y_lin.to(f_q.dtype) + window_factor * y_slide
 
                 else:  # Stateful training
                     try:
@@ -209,9 +199,6 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
                                                          kv_state=kv_state,
                                                          k_state=k_state)
                     # Save and update KV cache and states
-                    # past_key_value.update(k, v.detach(), self.layer_idx,
-                    #                       fmap_key_states=f_k.detach(),
-                    #                       accumulate_in_fp32=True)
                     past_key_value.update(k, v, self.layer_idx,
                                           fmap_key_states=f_k,
                                           accumulate_in_fp32=True)

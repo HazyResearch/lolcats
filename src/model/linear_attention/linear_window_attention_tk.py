@@ -74,7 +74,6 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
 
     # 3. Combine
     a = ((a_sm + a_ln) / (sum_sm + sum_ln)).to(q.dtype)  # Save attention weights
-    # Allow outputs to also depend on prior kv_state and k_state
     y = torch.einsum('bhmn,bhnd->bhmd', a_sm + a_ln, v.float())
     if kv_state is not None:  # Combine with prior kv_state and k_state
         y += linear_factor * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float())
@@ -98,6 +97,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                  init_window_factor: float = 0,
                  state_grad_enabled: bool = False,
                  **kwargs):
+
         self.window_size = window_size
         self.decode_window_size = (
             decode_window_size if decode_window_size is not None else window_size
@@ -147,9 +147,11 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             # compute attn weights under sliding window
             window_factors = F.sigmoid(self.window_factors)
             linear_factors = 1 - window_factors if self.affine_attention_factors else 1
+            # print(f"{q.dtype=}; {k.dtype=}; {v.dtype=}; {f_q.dtype=}; {f_k.dtype=}")
             y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                       window_factors, linear_factors,
                                                       window_size=self.window_size)
+            # print(f"{y_pred.dtype=}; {_y_true.dtype=}")
             attn_weights = ((a_pred, a_true), (y_pred, _y_true))
         else:
             attn_weights = None
