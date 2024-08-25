@@ -245,10 +245,14 @@ def main():
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
-        if args.load_distill_checkpoint is not None:
-            model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+        
+        if distill_config.trainer.name is not None:
+            if args.load_distill_checkpoint is not None:
+                model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+            else:
+                model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
         else:
-            model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
+            print(" -> Proceeding without learned linear attentions")
     
     #     model.print_trainable_parameters()
     if wandb_run and distill_peft_config is not None:
