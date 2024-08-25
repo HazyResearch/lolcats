@@ -12,7 +12,7 @@ import torch
 # from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
 from src.model.load_model_for_eval import load_model_from_checkpoint, load_model_from_config
 
-LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
+LM_EVALUATION_HARNESS_PATH = '/home/mzhang/projects/lm-evaluation-harness'
 
 
 OPEN_LLM = [  # task, shots
@@ -141,7 +141,7 @@ def main():
             'max_batch_size': args.max_batch_size,
         })
 
-    if args.task in ['mmlu', 'mmlu_alpaca_v2']:
+    if args.task in ['mmlu', 'mmlu_alpaca_v2', 'hendrycks_test']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:
@@ -164,10 +164,10 @@ def main():
         output_base_path=None,  # args.output_base_path,
     )
 
-    if args.task in ['mmlu', 'mmlu_alpaca_v2']:
+    if args.task in ['mmlu', 'hendyricks_test']:
         mmlu_accs = []
         for k, v in results['results'].items():
-            if 'mmlu' in k:
+            if args.task in k:
                 mmlu_accs.append(v['acc'])
         print(mmlu_accs)
         if len(mmlu_accs) > 0:

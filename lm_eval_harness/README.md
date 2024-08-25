@@ -10,6 +10,12 @@ We then point to this path in `./lm_eval_harness/eval_lm_harness.py`, e.g.
 LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
 ```
 
+You may also need to install `sacrebleu` and HuggingFace `evaluate`.
+```bash
+pip install --upgrade --force-reinstall sacrebleu
+pip install evaluate
+```
+
 ---
 
 ## Running the evaluations
