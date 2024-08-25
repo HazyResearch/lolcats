@@ -18,7 +18,7 @@ You may also need to install the following packages:
 
 ```bash
 pip install --upgrade --force-reinstall sacrebleu
-pip install evaluate sqlitedict scikit-learn
+pip install evaluate sqlitedict scikit-learn pycountry
 ```
 
 Finally, we'll want to replace the current file in `lm-evaluation-harness/lm_eval/models/huggingface.py` with `lolcats/lm_eval_harness/models_huggingface.py` to better support loading our linearized checkpoints (some missing keyword args in the original... sorry).
@@ -96,7 +96,7 @@ python lm_eval_harness/eval_lm_harness.py --model_type lolcats_ckpt \
 python lm_eval_harness/eval_lm_harness.py --model_type lolcats_ckpt \
 --attn_mlp_checkpoint_path ./checkpoints/distill_long_llama3_8b_lk_smd_wtk64_fd64_w01/dl-d=distill_long_alpaca_8k_xent0_mse1000_lr1e-2_bs1-m=distill_long_llama3_8b_lk_smd_wtk64_fd64_w01-f=finetune_long_lora_qkvo_alpaca_clean_8192-s=0-gas=1-nte=2-se=0-re=614-scl=1024-lzi=1_distill.pt \
 --finetune_checkpoint_path ./checkpoints/distill_long_llama3_8b_lk_smd_wtk64_fd64_w01/dl-d=distill_long_alpaca_8k_xent0_mse1000_lr1e-2_bs1-m=distill_long_llama3_8b_lk_smd_wtk64_fd64_w01-f=finetune_long_lora_qkvo_alpaca_clean_8192-s=0-gas=1-nte=2-se=0-re=614-scl=1024-lzi=1-bs=1-gas=1-nte=2-se=0-re=614_ft.pt \
---task hendrycks_test --num_shots 5 --no_cache --verbose
+--task hendrycksTest --num_shots 5 --no_cache --verbose
 ```
 
 ### 70B Evaluation
