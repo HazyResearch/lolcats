@@ -39,7 +39,7 @@ from llama_recipes.trainer_finetune import print_model_size
 # from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
 from src.model.load_model_for_eval import load_model_from_checkpoint, load_model_from_config
 
-LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'
+LM_EVALUATION_HARNESS_PATH = '/home/mzhang/projects/lm-evaluation-harness'
 
 
 OPEN_LLM = [  # task, shots
@@ -63,7 +63,7 @@ ZERO_SHOT = [
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--project_name", type=str, default='lolcats-eval')
-    parser.add_argument("--model_type", type=str, default=None,
+    parser.add_argument("--model_type", type=str, default='lolcats_ckpt',
                         choices=['lolcats_ckpt', 'model_config', 'huggingface'])
     # Use these args to find sharded checkpoints
     parser.add_argument("--model_config", type=str, default=None)
@@ -178,21 +178,21 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
     return config
 
 
-def get_lm_eval_lolcats_model(model_kwargs: dict,):
+def get_lm_eval_lolcats_model(model_kwargs: dict, lolcats_model: bool = True):
     lm_kwargs = copy.deepcopy(model_kwargs)
     lm_kwargs['pretrained'] = lm_kwargs['pretrained_model_name_or_path']
     lm_kwargs['dtype'] = str(lm_kwargs['torch_dtype']).split('.')[-1]
     del lm_kwargs['torch_dtype']
 
     print('-> Loading as lm-evaluation-harness model')
-    if 'Llama' in lm_kwargs['pretrained_model_name_or_path']:
+    if 'Llama' in lm_kwargs['pretrained_model_name_or_path']:  #  and lolcats_model:
         lm_kwargs['device_map'] = None
         from lm_eval_harness.models import ShardedLolcatsLlamaForCausalLM
         lm = ShardedLolcatsLlamaForCausalLM.create_from_arg_string(
             '', lm_kwargs,
         )
     else:
-        sys.path.append(path_to_lm_eval_harness)
+        sys.path.append(LM_EVALUATION_HARNESS_PATH)
         from lm_eval.models import get_model
         
         lm = get_model('hf-causal-experimental').create_from_arg_string(
@@ -225,10 +225,11 @@ def main():
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
 
-    # Load distillation + (hedgehog) attention configs
-    distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
-    distill_config = OmegaConf.load(distill_config_path)
-    distill_config = update_config_from_args(distill_config, args)
+    if args.model_type == 'lolcats_ckpt':
+        # Load distillation + lolcats attention configs
+        distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
+        distill_config = OmegaConf.load(distill_config_path)
+        distill_config = update_config_from_args(distill_config, args)
 
     model_config_path = join('./configs/model', f'{args.model_config}.yaml')
     model_config = OmegaConf.load(model_config_path)
@@ -237,17 +238,21 @@ def main():
     # We load model initially onto CPU
     model_config.model.device_map = None  # FSDP will complain about device placement o.w.
 
-    # Update dataset pretrained model config
-    for k in distill_config.dataset.pretrained_model_config:
-        distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
+    if args.model_type == 'lolcats_ckpt':
+        # Update dataset pretrained model config
+        for k in distill_config.dataset.pretrained_model_config:
+            distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
 
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
 
-    # Use for loading sharded weights into single model
-    distill_config = setup_fsdp_config(distill_config, args, 'distill')
+    if args.model_type == 'lolcats_ckpt':
+        # Use for loading sharded weights into single model
+        distill_config = setup_fsdp_config(distill_config, args, 'distill')
 
-    print_header('Distillation Config')
-    print_config(distill_config)
+        print_header('Distillation Config')
+        print_config(distill_config)
+    else:
+        distill_config = OmegaConf.create({})
     print_header('Model Config')
     print_config(model_config)
 
@@ -282,7 +287,8 @@ def main():
     # use_cache = False if args.enable_fsdp else None
 
     # Load model weights to CPU
-    lm = get_lm_eval_lolcats_model(model_loader.loading_kwargs)
+    lm = get_lm_eval_lolcats_model(model_loader.loading_kwargs,
+                                   lolcats_model=args.model_type == 'lolcats_ckpt')
     model = lm.model  # Do this way because we call the larger object
     for ix in range(len(model.model.layers)): 
         model.model.layers[ix].cpu()
@@ -325,40 +331,41 @@ def main():
     if args.pure_bf16:
         model.to(torch.bfloat16)
 
-    # -------------------------------
-    # 3. CONVERT DISTILLED ATTENTIONS
-    # -------------------------------
-    model, distill_peft_config = load_and_convert_attns(model, model_config,
-                                                        attention_type=args.attention_type,  # 'lolcats_llama',
-                                                        checkpoint_path=None,  # args.load_distill_checkpoint,
+    if args.model_type == 'lolcats_ckpt':
+        # -------------------------------
+        # 3. CONVERT DISTILLED ATTENTIONS
+        # -------------------------------
+        model, distill_peft_config = load_and_convert_attns(model, model_config,
+                                                            attention_type=args.attention_type,  # 'lolcats_llama',
+                                                            checkpoint_path=None,  # args.load_distill_checkpoint,
+                                                            print_model=args.verbose,
+                                                            merge_loras=False,
+                                                            peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
+                                                            train_attention=False)
+        if rank == 0:
+            # if args.replicate == 64:
+            #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
+            # else:
+            #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
+            model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
+                                                cfg=distill_config, rank=rank)
+            
+        # ----------------------------
+        # 4. ADD FINETUNING PARAMETERS
+        # ----------------------------
+        finetune_config, args = prepare_finetune_configs(args, model_config, 
+                                                        args.finetune_config)
+        # finetune_config = update_config_from_args(finetune_config, args)
+        finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
+                
+        model, ft_peft_config = load_and_convert_finetune(model, finetune_config,
+                                                        checkpoint_path=None,
                                                         print_model=args.verbose,
                                                         merge_loras=False,
-                                                        peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
-                                                        train_attention=False)
-    if rank == 0:
-        # if args.replicate == 64:
-        #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
-        # else:
-        #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
-        model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
-                                              cfg=distill_config, rank=rank)
-        
-    # ----------------------------
-    # 4. ADD FINETUNING PARAMETERS
-    # ----------------------------
-    finetune_config, args = prepare_finetune_configs(args, model_config, 
-                                                     args.finetune_config)
-    # finetune_config = update_config_from_args(finetune_config, args)
-    finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
-            
-    model, ft_peft_config = load_and_convert_finetune(model, finetune_config,
-                                                      checkpoint_path=None,
-                                                      print_model=args.verbose,
-                                                      merge_loras=False,
-                                                      peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
-    if rank == 0:
-        model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
-                                              cfg=finetune_config, rank=rank)
+                                                        peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
+        if rank == 0:
+            model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
+                                                cfg=finetune_config, rank=rank)
     # Back to LM Eval model
     lm.model = model
     model = lm

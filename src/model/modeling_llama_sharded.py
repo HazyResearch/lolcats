@@ -95,7 +95,7 @@ class ShardedLolcatsLlamaModel(LlamaModel):
         if use_cache:
             if past_key_values is None or isinstance(past_key_values, DynamicCache): # Determine and setup our KV cache or state
                 attention_type = getattr(self.layers[0].self_attn, 'attention_type', None)
-                past_key_values = get_attention_cache(attention_type)
+                past_key_values = get_attention_cache(attention_type, past_key_values)
             else:
                 past_key_values.get_usable_length(seq_length)   
                 
