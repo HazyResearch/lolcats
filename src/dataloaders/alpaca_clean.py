@@ -52,8 +52,14 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     input_len = dataset_config['chunk_size']
     concat_data = dataset_config['concat_data']
 
-    tokenizer_name = pretrained_model_config['pretrained_model_name_or_path']
-    tokenizer_name = tokenizer_name.split('/')[-1]
+    import os
+    if not os.path.exists(pretrained_model_config['pretrained_model_name_or_path']) and 'pretrained_model_name_or_path_backup' in pretrained_model_config:
+        print(f"Using backup path.")
+        tokenizer_name = pretrained_model_config['pretrained_model_name_or_path_backup']
+        tokenizer_name = tokenizer_name.split('/')[-1]
+    else:
+        tokenizer_name = pretrained_model_config['pretrained_model_name_or_path']
+        tokenizer_name = tokenizer_name.split('/')[-1]
     
     # Setup tokenizer
     tokenizer = get_tokenizer_from_config(pretrained_model_config)
