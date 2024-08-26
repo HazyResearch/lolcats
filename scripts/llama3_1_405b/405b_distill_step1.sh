@@ -7,8 +7,8 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=22
 #SBATCH --time=2000:00:00
-#SBATCH --output=/home/simarora/utils/slurm_logs_0825/slurm-%j.out
-#SBATCH --error=/home/simarora/utils/slurm_logs_0825/slurm-%j.err
+#SBATCH --output=/home/simarora/utils/slurm_logs/slurm-%j.out
+#SBATCH --error=/home/simarora/utils/slurm_logs/slurm-%j.err
 
 # Initialize HPC-X toolkit for high-performance computing
 . /opt/hpcx/hpcx-init.sh
@@ -29,7 +29,17 @@ export MASTER_PORT=29500
 export PYTHONPATH=/home/simarora/code/lolcats/
 
 
-srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes/distill_llama.py --model_config distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 --distill_config distill_alpaca_clean_llama3_1_405b_xent0_mse1000_lr1e-2 --finetune_config finetune_lora_qkvo_alpaca_clean_llama3_1_405b --eval_config eval_alpaca_clean --verbose --replicate 0 --seed 0 --lk_zero_init --eval_steps 1 --dataset_chunk_size 512 --enable_fsdp --fsdp_activation_checkpointing
+srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes/distill_llama.py \
+    --model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
+    --distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
+    --finetune_config llama3_1_405b/finetune_llama_405b \
+    --eval_config eval_alpaca_clean \
+    --verbose --replicate 0 --seed 0 \
+    --lk_zero_init --eval_steps 16 --dataset_chunk_size 1024 \
+    --enable_fsdp --fsdp_activation_checkpointing
+
+
+# srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes/distill_llama.py --model_config distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 --distill_config distill_alpaca_clean_llama3_1_405b_xent0_mse1000_lr1e-2 --finetune_config finetune_lora_qkvo_alpaca_clean_llama3_1_405b --eval_config eval_alpaca_clean --verbose --replicate 0 --seed 0 --lk_zero_init --eval_steps 1 --dataset_chunk_size 512 --enable_fsdp --fsdp_activation_checkpointing
 
 # srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes/distill_llama_finetune.py --model_config distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 --distill_config distill_alpaca_clean_llama3_1_405b_xent0_mse1000_lr1e-2 --finetune_config finetune_lora_qkvo_alpaca_clean_llama3_1_405b --eval_config eval_alpaca_clean --verbose --replicate 0 --seed 0 --lk_zero_init --eval_steps 1 --dataset_chunk_size 512 --enable_fsdp --fsdp_activation_checkpointing
 
