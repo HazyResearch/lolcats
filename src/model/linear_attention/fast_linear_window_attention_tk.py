@@ -63,10 +63,13 @@ def hybrid_attention(
 ):
     # 1. SWA
     v_slide = v.transpose(1,2)
-    o_slide = flash_attn_func(
-        q, k, v_slide, 0.0, causal=True,
-        window_size=(window_size, 0), 
-    ).transpose(1,2)
+    try:
+        o_slide = flash_attn_func(
+            q, k, v_slide, 0.0, causal=True,
+            window_size=(window_size, 0), 
+        ).transpose(1,2)
+    except:
+        print(f"{q.shape=}, {k.shape=}, {v.shape=}")
 
     # 2. Under window (linear attention)
     o, recurrent_state = fused_chunk_linear_attn(
@@ -157,7 +160,10 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
             if past_key_value is None:  # Regular training
                 window_factors = F.sigmoid(self.window_factors)
                 linear_factors = 1 - window_factors if self.affine_attention_factors else 1
-                y_true, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
+
+                q = q.transpose(1, 2)
+                k = k.transpose(1, 2)
+                y_true = self.quadratic_attention(q, k, f_q, f_k, v,
                                                           window_factors, linear_factors,
                                                           window_size=self.window_size)
             else:
