@@ -54,7 +54,6 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
 
     tokenizer_name = pretrained_model_config['pretrained_model_name_or_path']
     tokenizer_name = tokenizer_name.split('/')[-1]
-    # save_path = join(cache_dir, f'{name}_{tokenizer_name}')
     
     # Setup tokenizer
     tokenizer = get_tokenizer_from_config(pretrained_model_config)
@@ -80,9 +79,9 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         dataset = train_set  # hack to work with below code
     else:
         dataset = dataset['train']
-        train_set = convert_to_hf_dataset([dataset[ix] for ix in range(200, len(dataset))], cache_dir)
-        val_set   = convert_to_hf_dataset([dataset[ix] for ix in range(200)], cache_dir)
-        test_set  = convert_to_hf_dataset([dataset[ix] for ix in range(200)], cache_dir)
+        train_set = convert_to_hf_dataset([dataset[ix] for ix in range(500, len(dataset))], cache_dir)
+        val_set   = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
+        test_set  = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
 
     # Convert to dicts of {input_ids, attention_mask, labels}
     train_set = train_set.map(
