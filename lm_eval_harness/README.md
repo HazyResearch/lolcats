@@ -22,7 +22,6 @@ pip install evaluate sqlitedict scikit-learn pycountry
 ```
 
 Finally, we'll want to replace the current file in `lm-evaluation-harness/lm_eval/models/huggingface.py` with `lolcats/lm_eval_harness/models_huggingface.py` to better support loading our linearized checkpoints (some missing keyword args in the original... sorry).
-
 ---
 
 ## Running the evaluations

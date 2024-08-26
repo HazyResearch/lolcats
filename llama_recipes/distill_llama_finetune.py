@@ -365,7 +365,7 @@ def main():
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
     # scheduler = StepLR(optimizer, step_size=1, gamma=train_config.gamma)
-    scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)
+    scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
 
     if args.verbose and rank == 0:
         print('-> Optimizer:', optimizer)
