@@ -74,6 +74,7 @@ def get_args():
     # Evaluation
     parser.add_argument("--no_init_eval", action='store_true', default=False)
     parser.add_argument("--eval_steps", type=int, default=None)
+    parser.add_argument("--max_eval_batches", type=int, default=None)
 
     # Miscellaneous
     parser.add_argument("--huggingface_token", type=str, default=None)

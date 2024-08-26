@@ -198,7 +198,7 @@ class LolcatsLlamaForCausalLM(LlamaForCausalLM):
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(*args, **kwargs)
         hidden_states = outputs[0]
-        if getattr(self.model.layers[0].self_attn, 'train_attention', False):
+        if False:  # getattr(self.model.layers[0].self_attn, 'train_attention', False):
             logits = None
         else:  # regular training
             if self.config.pretraining_tp > 1:
