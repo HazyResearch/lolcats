@@ -6,6 +6,8 @@ Finetune attention-swapped model. Rough adaptation of llama_recipes script for d
 """
 import os
 from os.path import join
+# import sys
+# sys.path.append('/workspace/lolcats')  # needed for vast-ai instances
 import dataclasses
 import random
 import argparse  # ours
@@ -21,12 +23,17 @@ from torch.distributed.fsdp import (
 )
 
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
+
 from llama_recipes.configs import fsdp_config as FSDP_CONFIG
+# from llama_recipes.configs import train_config as TRAIN_CONFIG
 from llama_recipes.policies import AnyPrecisionAdamW, apply_fsdp_checkpointing
 
 from llama_recipes.utils.fsdp_utils import fsdp_auto_wrap_policy
 from llama_recipes.utils.config_utils import (
     update_config,
+    # generate_peft_config,
+    # generate_dataset_config,
+    # get_dataloader_kwargs,
 )
 from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
@@ -221,11 +228,8 @@ def main():
     # -------------------------------
     # 3. CONVERT DISTILLED ATTENTIONS
     # -------------------------------
-    # if 'peft_config' in model_config['attention']:    # Hack rn, but we assume finetuning LoRAs are a superset of
-    #     del model_config['attention']['peft_config']  # distilled attention LoRAs. So we only adapt the model once (when calling load_and_convert_finetune)
-    # elif 'peft' in model_config['attention']:
-    #     del model_config['attention']['peft']
-    model, distill_peft_config = load_and_convert_attns(model, model_config,
+    if distill_config.trainer.name is not None:
+        model, distill_peft_config = load_and_convert_attns(model, model_config,
                                                         attention_type=args.attention_type,
                                                         checkpoint_path=None,  # args.load_distill_checkpoint, 
                                                         print_model=args.verbose,
@@ -238,14 +242,23 @@ def main():
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
-        if args.load_distill_checkpoint is not None:
-            model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+        
+        if distill_config.trainer.name is not None:
+            if args.load_distill_checkpoint is not None:
+                model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
+            else:
+                model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
+            print("-> Using loaded linear attentions")
         else:
-            model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
+
+            print(" -> Proceeding without learned linear attentions")
+
+        import time 
+        time.sleep(2)
     
-    #     model.print_trainable_parameters()
-    if wandb_run and distill_peft_config is not None:
-        wandb_run.config.update(distill_peft_config)
+    if distill_config.trainer.name is not None:
+        if wandb_run and distill_peft_config is not None:
+            wandb_run.config.update(distill_peft_config)
         
     # ----------------------------
     # 4. ADD FINETUNING PARAMETERS
@@ -333,7 +346,6 @@ def main():
         for n, p in model.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
-            break
         # print_header('*** model.state_dict() ***')
         # for k in model.state_dict().keys():
         #     print(f'├── {k}')
@@ -355,7 +367,7 @@ def main():
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
     # scheduler = StepLR(optimizer, step_size=1, gamma=train_config.gamma)
-    scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)
+    scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
 
     if args.verbose and rank == 0:
         print('-> Optimizer:', optimizer)
