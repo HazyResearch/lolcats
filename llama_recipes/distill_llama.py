@@ -275,15 +275,21 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
 
     config.model_name = args.run_name
     config.use_peft = False  # We have custom logic for saving PEFT modules
-    config.save_model = True
-    config.run_validation = True
-    config.use_fp16 = False
-    config.save_model = True
-    config.save_optimizer = False
+
+    if getattr(config, 'fsdp', None) is None:
+        config.save_model = True
+        config.run_validation = True
+        config.use_fp16 = False
+        config.save_model = True
+        config.save_optimizer = False
+        config.gradient_clipping = False
+        config.gradient_clipping_threshold = 1.0
+    else:
+        for attr in ['save_model', 'run_validation', 'use_fp16', 'save_optimizer',
+                     'gradient_clipping', 'gradient_clipping_threshold']:
+            setattr(config, attr, getattr(config.fsdp, attr))
     config.output_dir = args.checkpoint_dir
     config.save_metrics = not args.no_wandb
-    config.gradient_clipping = False
-    config.gradient_clipping_threshold = 1.0
     config.num_epochs = config.trainer.num_train_epochs
     config.num_train_steps = getattr(args, 'num_train_steps', None)  # exit training loop early for debugging
     config.eval_steps = config.trainer.eval_steps  # how many gradient updates before evaluating
@@ -295,8 +301,13 @@ def main():
     # 1. SET UP
     # ---------
     args = get_args()
+
+    if args.enable_fsdp:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        rank = int(os.environ["RANK"])
+
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
-    if not os.path.isdir(args.checkpoint_dir):
+    if not os.path.isdir(args.checkpoint_dir) and rank == 0 and local_rank == 0:
         os.makedirs(args.checkpoint_dir)
 
     kwargs = vars(args)

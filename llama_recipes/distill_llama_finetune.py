@@ -6,8 +6,6 @@ Finetune attention-swapped model. Rough adaptation of llama_recipes script for d
 """
 import os
 from os.path import join
-# import sys
-# sys.path.append('/workspace/lolcats')  # needed for vast-ai instances
 import dataclasses
 import random
 import argparse  # ours
@@ -23,17 +21,12 @@ from torch.distributed.fsdp import (
 )
 
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
-
 from llama_recipes.configs import fsdp_config as FSDP_CONFIG
-# from llama_recipes.configs import train_config as TRAIN_CONFIG
 from llama_recipes.policies import AnyPrecisionAdamW, apply_fsdp_checkpointing
 
 from llama_recipes.utils.fsdp_utils import fsdp_auto_wrap_policy
 from llama_recipes.utils.config_utils import (
     update_config,
-    # generate_peft_config,
-    # generate_dataset_config,
-    # get_dataloader_kwargs,
 )
 from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
@@ -340,6 +333,7 @@ def main():
         for n, p in model.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
+            break
         # print_header('*** model.state_dict() ***')
         # for k in model.state_dict().keys():
         #     print(f'├── {k}')
@@ -403,11 +397,6 @@ def main():
         rank if args.enable_fsdp else None,
         wandb_run,
     )
-    # if not args.enable_fsdp or rank==0:
-    #     for k,v in results.items():
-    #         print(f'Key: {k}, Value: {v}')
-    #         if not args.no_wandb:
-    #             wandb_run.summary[f'ft_{k}'] = v
                 
     # Save best model checkpoint as single .pt file
     if fsdp_config.checkpoint_type == StateDictType.FULL_STATE_DICT:
