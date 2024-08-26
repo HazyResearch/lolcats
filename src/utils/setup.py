@@ -147,7 +147,7 @@ def update_config_from_args(config: DictConfig,
 
     # Trainer
     for arg in ['gradient_accumulation_steps', 'num_train_epochs', 
-                'max_steps', 'eval_steps', 'seed']:
+                'max_steps', 'eval_steps', 'seed', 'max_eval_batches']:
         argval = getattr(args, arg, None)
         if argval is not None:
             setattr(config.trainer, arg, argval)
