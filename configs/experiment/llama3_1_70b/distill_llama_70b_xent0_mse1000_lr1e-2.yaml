@@ -8,7 +8,7 @@ dataset:
     cache_dir: "data/"
   pretrained_model_config:
     pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/data_persistent2/sim_data/llama-3_1-8b/" # Set this to where you want to save checkpoint weights
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b/" # Set this to where you want to save checkpoint weights
   preprocess_config: null
 
 dataloader:
@@ -49,3 +49,11 @@ trainer: # HuggingFace Trainer-like arguments
   max_steps: -1
   eval_steps: 160 # round number for batch size grad accums
   max_eval_batches: null
+
+fsdp:
+  save_model: true 
+  run_validation: true
+  use_fp16: false
+  save_optimizer: false
+  gradient_clipping: true  # false
+  gradient_clipping_threshold: 1.0
