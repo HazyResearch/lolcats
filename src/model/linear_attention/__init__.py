@@ -16,3 +16,6 @@ from .linear_window_attention_tk_bf16 import (
 from .fast_linear_window_attention_tk import (
     FasterLolcatsTKWindowAttention,
 )
+from .cylon_linear_attention import (
+    CylonLolcatsTKWindowAttention
+)

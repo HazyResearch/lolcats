@@ -80,6 +80,9 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
         sum_ln += linear_factor * torch.einsum(
             'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
     y = (y / (sum_sm + sum_ln)).to(q.dtype)
+
+    # print(f"1. {y.shape=}, {a.shape=}")
+    # y.shape=torch.Size([1, 32, 1024, 128]), a.shape=torch.Size([1, 32, 1024, 1024])
     return y, a  # attention weights only for the last chunk
 
 
@@ -151,7 +154,9 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                       window_factors, linear_factors,
                                                       window_size=self.window_size)
-            # print(f"{y_pred.dtype=}; {_y_true.dtype=}")
+            # print(f"2. {y_pred.shape=}; {_y_true.shape=}")
+            # y_pred.shape=torch.Size([1, 32, 1024, 128]); _y_true.shape=torch.Size([1, 32, 1024, 128])
+
             attn_weights = ((a_pred, a_true), (y_pred, _y_true))
         else:
             attn_weights = None
@@ -211,6 +216,9 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             # Concatenate heads and apply output projection
             y_true = y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
             y_true = self.o_proj(y_true)
+        
+        # print(f"3. {y_true.shape=}")
+        # y_true.shape=torch.Size([1, 1024, 4096])
         return y_true, attn_weights, past_key_value
 
 
