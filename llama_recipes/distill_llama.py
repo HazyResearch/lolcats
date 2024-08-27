@@ -172,19 +172,6 @@ def get_args():
 
     distill_name = args.distill_config
     finetune_name = args.finetune_config
-    # Alternative default naming
-    # if args.load_distill_checkpoint is not None and args.load_distill_checkpoint != 'default':
-    #     distill_name = get_run_name_from_checkpoint(args.load_distill_checkpoint)
-    # else:
-    #     distill_name = args.distill_config
-    # if args.load_finetune_checkpoint is not None and args.load_finetune_checkpoint != 'default':
-    #     finetune_name = get_run_name_from_checkpoint(args.load_finetune_checkpoint)
-    # else:
-    #     finetune_name = args.finetune_config
-    # if args.load_finetune_long_checkpoint is not None:
-    #     finetune_long_name = get_run_name_from_checkpoint(args.load_finetune_long_checkpoint)
-    # else:
-    #     finetune_long_name = args.finetune_long_config
 
     args.run_name = f'dl-d={distill_name}-m={args.model_config}-f={finetune_name}'
     if args.no_peft_grad_ckpt is not None:
@@ -307,7 +294,7 @@ def main():
         rank = int(os.environ["RANK"])
 
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
-    if not os.path.isdir(args.checkpoint_dir) and rank == 0 and local_rank == 0:
+    if not os.path.isdir(args.checkpoint_dir) and ((args.enable_fsdp and rank == 0 and local_rank == 0) or not args.enable_fsdp):
         os.makedirs(args.checkpoint_dir)
 
     kwargs = vars(args)

@@ -85,6 +85,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         dataset = train_set  # hack to work with below code
     else:
         dataset = dataset['train']
+        print(f"Overall length: {len(dataset)=}")
         train_set = convert_to_hf_dataset([dataset[ix] for ix in range(500, len(dataset))], cache_dir)
         val_set   = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
         test_set  = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
