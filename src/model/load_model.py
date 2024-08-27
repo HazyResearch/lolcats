@@ -24,6 +24,7 @@ def load_and_convert_attns(model: nn.Module,
                            rank: int = 0,
                            remove_base_attn: bool = True,
                           ) -> nn.Module:
+    
     """
     Load trained attention kernel parameter weights
     """

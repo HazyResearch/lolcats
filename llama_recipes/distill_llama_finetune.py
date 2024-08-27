@@ -79,6 +79,23 @@ from distill_llama import (
 )
 
 
+import torch.distributed as dist
+from torch.distributed.elastic import rendezvous
+
+# Increase timeout
+os.environ['TORCHELASTIC_MAX_WAIT_TIME'] = '600'  # 10 minutes
+
+# Use a more robust rendezvous
+rendezvous_config = rendezvous.RendezvousParameters(
+    backend="c10d",
+    endpoint="tcp://MASTER_ADDR:MASTER_PORT",
+    run_id="MY_RUN_ID",
+    min_nodes=1,  # Minimum number of nodes to wait for
+    max_nodes=4,  # Maximum number of nodes to use
+    timeout=600
+)
+
+
 def main():
     # ---------
     # 1. SET UP
@@ -157,6 +174,16 @@ def main():
 
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
+
+    try:
+        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
+            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
+            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    except:
+        print(f"Model without model.pretrained_model_name_or_path_backup path")
+        pass
+
     model_loader = get_pretrained_loader(**model_config.model, 
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()
@@ -165,7 +192,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'llama' in model_config.model.pretrained_model_name_or_path:
+    if 'lama' in model_config.model.pretrained_model_name_or_path:
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
@@ -243,7 +270,7 @@ def main():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
         
-        if distill_config.trainer.name is not None:
+        if distill_config.trainer.name is not None: # SA: Flag if testing without a checkpoint
             if args.load_distill_checkpoint is not None:
                 model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
             else:
@@ -300,7 +327,7 @@ def main():
         elif torch.cuda.is_available():
             device_id = torch.cuda.current_device()
             print('-> device_id:', device_id)
-
+       
         model = FSDP(
             model,
             auto_wrap_policy=my_auto_wrapping_policy,  # if train_config.use_peft else wrapping_policy,
