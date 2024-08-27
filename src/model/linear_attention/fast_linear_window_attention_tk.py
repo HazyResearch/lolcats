@@ -153,6 +153,8 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
                 window_factors, linear_factors,
                 window_size=self.window_size
             )
+            # print(f"1. after attention {y_pred.shape=}; {_y_true.shape=}")
+            # y_pred.shape=torch.Size([1, 32, 1024, 128]); _y_true.shape=torch.Size([1, 32, 1024, 128])
             attn_weights = ((None, None), (y_pred, _y_true))        
         else:
             attn_weights = None
@@ -164,9 +166,10 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
                 q = q.transpose(1, 2)
                 k = k.transpose(1, 2)
                 y_true = self.quadratic_attention(q, k, f_q, f_k, v,
-                                                          window_factors, linear_factors,
-                                                          window_size=self.window_size)
+                                                    window_factors, linear_factors,
+                                                    window_size=self.window_size)
             else:
+                assert 0, print(f"Using the recurrent case")
                 past_key_value.window_size = self.decode_window_size
                 if f_q.shape[2] == 1 and kv_seq_len > 1 and not self.training:  # Generating
                     assert use_cache is True
@@ -209,8 +212,12 @@ class FasterLolcatsTKWindowAttention(LolcatsLinearAttention):
                                           fmap_key_states=f_k,
                                           accumulate_in_fp32=True)
             # Concatenate heads and apply output projection
+            # print(f"2. {y_true.shape=} before transpose")
+            # 2. y_true.shape=torch.Size([1, 32, 1024, 128]) before transpose
             y_true = y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
             y_true = self.o_proj(y_true)
+        # print(f"3. {y_true.shape=} at end")
+        # y_true.shape=torch.Size([1, 1024, 4096])
         return y_true, attn_weights, past_key_value
 
 

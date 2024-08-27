@@ -39,7 +39,6 @@ from llama_recipes.utils.fsdp_utils import (
 )
 from llama_recipes.trainer_attention import (
     train,
-    # freeze_transformer_layers,
     setup,
     setup_environ_flags,
     clear_gpu_cache,
@@ -49,8 +48,6 @@ from llama_recipes.trainer_attention import (
 # Ours
 from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
-    # load_model_checkpoint,
-    # save_model_checkpoint,
 )
 
 from accelerate.utils import is_xpu_available
@@ -71,7 +68,6 @@ from src.trainer import get_scheduler
 from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import (
     load_and_convert_attns,
-    # load_and_convert_finetune
 )
 from src.model.convert_model import toggle_attention
 
@@ -465,13 +461,6 @@ def main():
     if wandb_run and distill_peft_config is not None:
         wandb_run.config.update(distill_peft_config)
 
-    # if rank == 0:  # debugging
-    #     print_header('** Sanity check model weights **')
-    #     for n, p in model.named_parameters():
-    #         if ('layers.0.' in n and 'base_attn' not in n and 
-    #             '.0.mlp.' not in n and '.block_sparse_moe' not in n):
-    #             print(f'-> {n}:\n', p)
-
     hsdp_device_mesh = None
     if fsdp_config.hsdp and fsdp_config.sharding_strategy == ShardingStrategy.HYBRID_SHARD:
         hsdp_device_mesh = get_hsdp_device_mesh(replica_group_size=fsdp_config.replica_group_size, sharding_group_size=fsdp_config.sharding_group_size)
@@ -479,8 +468,6 @@ def main():
         
     # Setting up FSDP if enable_fsdp is enabled
     if args.enable_fsdp:
-        # if not train_config.use_peft and train_config.freeze_layers:
-        #     freeze_transformer_layers(train_config.num_freeze_layers)
         mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank, model=model_type)
         my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, DecoderLayer)
         
@@ -497,10 +484,8 @@ def main():
             cpu_offload=CPUOffload(offload_params=True) if fsdp_config.fsdp_cpu_offload else None,
             mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
             sharding_strategy=fsdp_config.sharding_strategy,
-            # device_mesh=hsdp_device_mesh,
             device_id=device_id,
             limit_all_gathers=True,
-            # limit_all_gathers=False,
             sync_module_states=args.low_cpu_fsdp,  # train_config.low_cpu_fsdp
             param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
             if args.low_cpu_fsdp and rank != 0 else None,
