@@ -12,7 +12,7 @@ import torch
 # from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
 from src.model.load_model_for_eval import load_model_from_checkpoint, load_model_from_config
 
-LM_EVALUATION_HARNESS_PATH = '/home/mzhang/projects/lm-evaluation-harness'
+LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
 
 
 OPEN_LLM = [  # task, shots
@@ -28,7 +28,7 @@ ZERO_SHOT = [
     ('arc-challenge', 0),
     ('arc-easy', 0),
     ('winogrande', 0),
-    ('hendrycks_test', 5),
+    ('hendrycksTest', 5),
 ]
 
 

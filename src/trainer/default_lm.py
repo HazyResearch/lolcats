@@ -117,10 +117,12 @@ class OurTrainer():
         pbar = tqdm(range(self.num_train_epochs), leave=False, colour='white',
                     desc='Training')
         for ix, epoch in enumerate(pbar):
-            model = self.train_step(model, epoch)
+            model, early_stopping = self.train_step(model, epoch)
             if self.evaluation_strategy == 'epoch':
                 _eval_metrics = self.eval_step(model, step=self.grad_step)
                 print(f'Epoch {ix} metrics:', _eval_metrics)
+            if early_stopping:
+                break
                 
         if self.load_best_model_at_end:  # Return best checkpoint
             try:
@@ -207,9 +209,12 @@ class OurTrainer():
                     pass
                 else:
                     eval_for_step = False
-            if self.step == self.max_steps:
-                break
-        return model
+            if self.grad_step == self.max_steps:
+                early_stopping = True
+                return model, early_stopping
+                
+        early_stopping = False
+        return model, early_stopping
 
     def eval_step(self, model: nn.Module, step: int = None,
                   **kwargs: any) -> dict[any]:
