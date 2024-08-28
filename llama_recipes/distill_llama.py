@@ -554,6 +554,8 @@ def main():
         if args.verbose:
             print_config(distill_config)
     # Start the training process
+
+    max_optimizer_steps = getattr(distill_config.optimizer, 'max_optimizer_steps', None)
     results, best_checkpoint_path = train(
         model,
         train_dataloader,
@@ -566,6 +568,7 @@ def main():
         fsdp_config if args.enable_fsdp else None,
         local_rank if args.enable_fsdp else None,
         rank if args.enable_fsdp else None,
+        max_optimizer_steps,
         wandb_run,
         eval_mode = args.replicate == 42,
     )

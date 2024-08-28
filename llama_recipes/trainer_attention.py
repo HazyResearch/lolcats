@@ -137,6 +137,7 @@ class LossComputer():
 def train(model, train_dataloader, eval_dataloader, tokenizer,
           optimizer, lr_scheduler, gradient_accumulation_steps,
           train_config, fsdp_config=None, local_rank=None, rank=None, 
+          max_optimizer_steps=None,
           wandb_run=None, eval_mode=False) -> tuple[dict[torch.Tensor], str]:
     """
     Trains the model on the given dataloader
@@ -161,6 +162,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
     if rank == 0 or rank is None:
         print('-> Gradient accumulation steps:', gradient_accumulation_steps)
+        print('-> Max optimizer steps:', max_optimizer_steps)
         print('-> Total # of training samples:', len(train_dataloader))
         total_length = len(train_dataloader)//gradient_accumulation_steps
         print('-> Total # of training updates:', total_length)
@@ -192,6 +194,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     results = {}
     best_val_loss = float("inf")
     best_checkpoint_path = None
+    total_optimizer_steps = 0
+    end = False
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
         with MemoryTrace() as memtrace:  # track the memory usage
@@ -205,7 +209,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
                 model.train()
-                # print('-> step:', step)
+                print(f'-> {rank=}, {step=}')
                 for key in batch.keys():
                     if key == 'labels':
                         batch[key] = None  # don't use labels for attention distillation
@@ -241,6 +245,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(), train_config.gradient_clipping_threshold)
                         scaler.step(optimizer)
+                        total_optimizer_steps += 1
+                        # print(f"{rank=}, {total_optimizer_steps=}")
                         scaler.update()
                         optimizer.zero_grad()
                         pbar.update(1)
@@ -257,6 +263,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(), train_config.gradient_clipping_threshold)
                         optimizer.step()
+                        total_optimizer_steps += 1
+                        # print(f"{rank=}, {total_optimizer_steps=}")
                         optimizer.zero_grad()
                         pbar.update(1)
                 if wandb_run:
@@ -277,6 +285,11 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
                 if step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic
+
+                if max_optimizer_steps is not None and total_optimizer_steps >= max_optimizer_steps:
+                    print(f"Reached max_optimizer_steps = {max_optimizer_steps}")
+                    end = True 
+                    break 
 
                 if (train_config.run_validation and (
                     (step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  #  or step == len(train_dataloader) - 1)):
@@ -327,6 +340,10 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         # Saving the results every epoch to plot later
         if train_config.save_metrics:
             save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
+
+        if end: 
+            print(f"Stopping for optimizer_step {max_optimizer_steps}")
+            break
 
     avg_epoch_time = sum(epoch_times)/ len(epoch_times)
     avg_checkpoint_time = sum(checkpoint_times)/ len(checkpoint_times) if len(checkpoint_times) > 0 else 0

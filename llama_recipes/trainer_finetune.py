@@ -61,6 +61,7 @@ class LossComputer():
 def train(model, train_dataloader, eval_dataloader, tokenizer,
           optimizer, lr_scheduler, gradient_accumulation_steps,
           train_config, fsdp_config=None, local_rank=None, rank=None,
+          max_optimizer_steps=None,
           wandb_run=None) -> dict[torch.Tensor]:
     """
     Trains the model on the given dataloader
@@ -85,6 +86,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
     if rank == 0 or rank is None:
         print('-> Gradient accumulation steps:', gradient_accumulation_steps)
+        print('-> Max optimizer steps:', max_optimizer_steps)
         print('-> Total # of training samples:', len(train_dataloader))
         total_length = len(train_dataloader)//gradient_accumulation_steps
         print('-> Total # of training updates:', total_length)
@@ -118,7 +120,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     best_val_loss = float("inf")
     best_checkpoint_path = None
     total_step = 0
-
+    total_optimizer_steps = 0
+    end = False
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
         # print('-> epoch:', epoch)
@@ -162,6 +165,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             else:
                                 torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.gradient_clipping_threshold)
                         scaler.step(optimizer)
+                        total_optimizer_steps += 1
+                        # print(f"{rank=}, {total_optimizer_steps=}")
                         scaler.update()
                         optimizer.zero_grad()
                         pbar.update(1)
@@ -176,6 +181,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             else:
                                 torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.gradient_clipping_threshold)
                         optimizer.step()
+                        total_optimizer_steps += 1
+                        # print(f"{rank=}, {total_optimizer_steps=}")
                         optimizer.zero_grad()
                         pbar.update(1)
 
@@ -212,7 +219,14 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         best_checkpoint_path = save_path
                     model.train()
                     print(f'-> Model is training on rank {rank}')
+                
                 total_step += 1
+                # print(f"{rank=}, {total_step=}")
+
+                if max_optimizer_steps is not None and total_optimizer_steps > max_optimizer_steps:
+                    print(f"Reached max_optimizer_steps = {max_optimizer_steps}")
+                    end = True 
+                    break 
             pbar.close()
 
         epoch_end_time = time.perf_counter()-epoch_start_time
@@ -248,6 +262,10 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
         if rank == 0 or not train_config.enable_fsdp:
             print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
+
+        if end: 
+            if rank == 0: print(f"Stopping for optimizer_step {max_optimizer_steps}")
+            break
 
     results = {'best_val_loss': best_val_loss, 
                'checkpoint_times': sum(checkpoint_times)/ len(checkpoint_times) if len(checkpoint_times) > 0 else 0}
