@@ -80,7 +80,7 @@ def get_args():
     parser.add_argument("--huggingface_token", type=str, default=None)
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
     # Feature map / model
-    parser.add_argument("--attention_type", type=str, default='lolcats_llama')
+    parser.add_argument("--attention_type", type=str, default=None)
     parser.add_argument("--lk_skip_connection", action='store_true', default=None)
     parser.add_argument("--lk_zero_init", action='store_true', default=None)
     parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
@@ -172,9 +172,9 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
     config.save_metrics = not args.no_wandb
     config.gradient_clipping = False
     config.gradient_clipping_threshold = 1.0
-    config.num_epochs = config.trainer.num_train_epochs
+    config.num_epochs = getattr(config.trainer, 'num_train_epochs', None)
     config.num_train_steps = getattr(args, 'num_train_steps', None)  # exit training loop early for debugging
-    config.eval_steps = config.trainer.eval_steps  # how many gradient updates before evaluating
+    config.eval_steps = getattr(config.trainer, 'eval_steps', None)  # how many gradient updates before evaluating
     return config
 
 
@@ -343,12 +343,13 @@ def main():
                                                             peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                             train_attention=False)
         if rank == 0:
-            # if args.replicate == 64:
-            #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
-            # else:
-            #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
-            model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
-                                                cfg=distill_config, rank=rank)
+            if distill_config.trainer.name is not None or args.attn_mlp_checkpoint_path is not None:
+                # if args.replicate == 64:
+                #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
+                # else:
+                #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
+                model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
+                                                    cfg=distill_config, rank=rank)
             
         # ----------------------------
         # 4. ADD FINETUNING PARAMETERS

@@ -38,7 +38,7 @@ from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
 )
 from llama_recipes.trainer_attention import (
-    train,
+    train as _train_normal,
     # freeze_transformer_layers,
     setup,
     setup_environ_flags,
@@ -52,6 +52,8 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     # load_model_checkpoint,
     # save_model_checkpoint,
 )
+from llama_recipes.trainer_attention_chunked import train as train_chunked
+from torch.distributed.optim import DistributedOptimizer
 
 from accelerate.utils import is_xpu_available
 
@@ -306,6 +308,11 @@ def main():
 
     kwargs = vars(args)
 
+    if 'distill_long' in args.distill_config:
+        train = train_chunked
+    else:
+        train = _train_normal
+
     # Load distillation + attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
     distill_config = OmegaConf.load(distill_config_path)
@@ -409,7 +416,7 @@ def main():
                             # "please install latest nightly.")
         model = model_loader.load(args.attention_type)
         model.state_chunk_len = model_config['attention']['state_chunk_len']
-        # if rank == 0:
+        # if rank == 0:   # Older, but now AutoModelForCausalLM.from_pretrained() handles
         #     model = model_loader.load(args.attention_type)
         #     model.state_chunk_len = model_config['attention']['state_chunk_len']
         #     # For finetuning, if weights are saved to single .pt file we should load here
@@ -452,9 +459,6 @@ def main():
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                         train_attention=True,
                                                         rank=rank)
-    # Hack to avoid having to call lm_head
-    with torch.no_grad():
-        model.lm_head = None
     model = toggle_attention(model, train=True)
     if 'lora' in args.model_config and rank == 0:  # a bit hacky, but we should name model_config to indicate peft
         model.print_trainable_parameters()
@@ -520,6 +524,8 @@ def main():
         for n, p in model.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
+            if p.grad is not None:
+                print(f"├────── Param shape: {p.size()}, Grad shape: {p.grad.size()}")
 
     # Initialize the optimizer and learning rate scheduler
     if fsdp_config.pure_bf16 and fsdp_config.optimizer == "anyprecision":
@@ -532,13 +538,31 @@ def main():
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
     else:
-        optimizer = optim.AdamW(
-            model.parameters(),
-            lr=distill_config.optimizer.lr,
-            weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
-        )
+        if False:  # 'distill_long' in args.distill_config:
+            optimizer = DistributedOptimizer(
+                torch.optim.AdamW, model.parameters(), 
+                lr=distill_config.optimizer.lr,
+                weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
+            )
+        else:
+            optimizer = optim.AdamW(
+                model.parameters(),
+                lr=distill_config.optimizer.lr,
+                weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
+            )
+        # optimizer = optim.SGD(
+        #     model.parameters(),
+        #     lr=distill_config.optimizer.lr,
+        #     weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
+        # )
     # ex.) scheduler = StepLR(optimizer, step_size=1, gamma=train_config.gamma)
     scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)
+
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            print(f'├── {n} (dtype = {p.dtype})')
+        if p.grad is not None:
+            print(f"├────── Param shape: {p.size()}, Grad shape: {p.grad.size()}")
 
     if args.verbose:
         print('-> Optimizer:', optimizer)
