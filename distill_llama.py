@@ -64,6 +64,7 @@ def get_args():
     parser.add_argument("--gradient_accumulation_steps", type=int, default=None)
     parser.add_argument("--num_train_epochs", type=int, default=None)
     parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--max_finetune_steps", type=int, default=None)
 
     parser.add_argument("--no_peft_grad_ckpt", action='store_true', default=None)
     
@@ -91,6 +92,8 @@ def get_args():
 
     args = parser.parse_args()
     args.run_name = get_run_name_from_args(args)
+    # if args.max_finetune_steps is None:
+    #     args.max_finetune_steps = args.max_steps
     return args
 
 
@@ -297,6 +300,8 @@ def main():
             for k, v in initial_metrics.items():
                 print(f'├── {k}: {v}')
 
+        if args.max_finetune_steps is not None:
+            args.max_steps = args.max_finetune_steps
         if args.load_finetune_checkpoint is None or args.resume_finetune:
             finetune_config, args = prepare_finetune_configs(args, model_config,
                                                              args.finetune_config)
@@ -329,7 +334,7 @@ def main():
 
         if ft_peft_config is not None and wandb is not None:
             _flattened['peft_ft'] = ft_peft_config
-            wandb.config.update(_flattened)
+            wandb.config.update(_flattened, allow_val_change=True)
 
     if not args.no_init_eval:  # Check on summary example
         print_header('*** Distilled + Finetuned Evaluation ***')
