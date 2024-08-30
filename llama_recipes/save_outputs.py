@@ -53,6 +53,10 @@ from distill_llama import (
 import torch.distributed as dist
 from torch.distributed.elastic import rendezvous
 
+from collections import defaultdict
+from tqdm import tqdm
+
+
 # Increase timeout
 os.environ['TORCHELASTIC_MAX_WAIT_TIME'] = '600'  # 10 minutes
 
@@ -281,18 +285,23 @@ def main():
         for layer, data_list in layer2dataset.items():
             gathered_data_list = []
             for data in data_list:
-                gathered_tensors = [torch.zeros_like(data) for _ in range(world_size)] 
+                gathered_tensors = [torch.zeros_like(data, device='cuda') for _ in range(world_size)] 
                 dist.barrier()
-                dist.all_gather(gathered_tensors, data)
+                dist.all_gather(gathered_tensors, data.to(device='cuda'))
                 dist.barrier()
                 gathered_data_list.extend([tensor.cpu().detach() for tensor in gathered_tensors])
             if rank == 0:
                 gathered_layer2dataset[layer] = gathered_data_list
         return gathered_layer2dataset
 
-    from collections import defaultdict
+
     layer2dataset = defaultdict(list)
-    from tqdm import tqdm
+    model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
+    seqlen = distill_config.dataset['dataset_config']['chunk_size']
+    if "8b" in model_name.lower(): interval = 100 
+    elif "70b" in model_name.lower(): interval = 50
+    else:
+        assert 0, print("Unknown model.")
 
     for data_name, dataloader in [('train', train_dataloader), ('eval', eval_dataloader)]:
         layer2dataset_so_far = []
@@ -310,37 +319,43 @@ def main():
             with torch.no_grad():
                 outputs = get_outputs(model, batch, rank=rank, local_rank=local_rank)
                 for idx, hidden_state in enumerate(outputs[:-1]):  
-                    hidden_state = model.model.layers[idx].input_layernorm(hidden_state)
+                    hidden_state = model.model.layers[idx].input_layernorm(hidden_state).cpu()
                     layer2dataset[idx].append(hidden_state)
             pbar.set_description(f"Rank {rank}; Dataset size: {len(layer2dataset[0])}")
             
             # do it in chunks to shift stuff to the CPU
-            if step % 200 == 0: 
+            if step % interval == 0 or step == len(pbar) - 1: 
+                
                 print(f"Synchronizing {step=}!")
-                dist.barrier()
                 layer2dataset_collect = gather_layer2dataset(layer2dataset, world_size, rank)
                 if rank == 0:
                     layer2dataset_so_far.append(layer2dataset_collect)
-                dist.barrier()
                 # Clear the GPU memory after gathering
                 layer2dataset.clear()
                 torch.cuda.empty_cache()
 
-        # Save the results
-        if rank == 0: # Only the main process (rank 0) will save the data
-            combined_layer2dataset = {}
-            for layer_dict in layer2dataset_so_far:
-                for layer_idx, hidden_states in layer_dict.items():
-                    if layer_idx not in combined_layer2dataset:
-                        combined_layer2dataset[layer_idx] = []
-                    combined_layer2dataset[layer_idx].extend(hidden_states)
+                # Save the results so far
+                if rank == 0: # Only the main process (rank 0) will save the data
+                    combined_layer2dataset = {}
+                    for layer_dict in layer2dataset_so_far:
+                        for layer_idx, hidden_states in layer_dict.items():
+                            if layer_idx not in combined_layer2dataset:
+                                combined_layer2dataset[layer_idx] = []
+                            combined_layer2dataset[layer_idx].extend(hidden_states)
+                    save_dir="/scratch/sim/saved_output"
+                    print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
+                    os.makedirs(save_dir, exist_ok=True)
+                    save_path = os.path.join(save_dir, f"{model_name}-{data_name}_seqlen{seqlen}-step{step}_layer2dataset.pt")
+                    torch.save(combined_layer2dataset, save_path)
+                    print(f"Saved synchronized {data_name}_layer2dataset to {save_path}")
 
-            save_dir="/home/simarora/code/lolcats/data/saved_output"
-            print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
-            os.makedirs(save_dir, exist_ok=True)
-            save_path = os.path.join(save_dir, f"{data_name}_layer2dataset.pt")
-            torch.save(combined_layer2dataset, save_path)
-            print(f"Saved synchronized {data_name}_layer2dataset to {save_path}")
+                    # Clear CPU memory after saving
+                    del combined_layer2dataset
+                    del layer2dataset_so_far
+                    import gc
+                    gc.collect()
+                layer2dataset_so_far = []
+
     dist.destroy_process_group()
 
 if __name__ == "__main__":
