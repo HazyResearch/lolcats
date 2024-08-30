@@ -64,7 +64,33 @@ from src.model.load_model import (
 )
 from src.model.convert_model import toggle_attention
 
-from llama_recipes.distill_llama import get_run_name_from_checkpoint, get_args, setup_wandb, setup_fsdp_config
+from llama_recipes.distill_llama import get_run_name_from_checkpoint, get_args, setup_fsdp_config
+
+
+def setup_wandb(layer, train_config, fsdp_config, run_name = None, **kwargs):
+    """
+    Setup WandB for logging
+    """
+    try: 
+        import wandb
+    except ImportError:
+        raise ImportError(
+            "You are trying to use wandb which is not currently installed. "
+            "Please install it using pip install wandb"
+        )
+    from llama_recipes.configs import wandb_config as WANDB_CONFIG
+    wandb_config = WANDB_CONFIG()
+    update_config(wandb_config, **kwargs)
+    init_dict = dataclasses.asdict(wandb_config)
+
+    import uuid
+    random_hash = uuid.uuid4().hex[:4]  # Use the first 8 characters of a UUID
+    run_name = f"{random_hash}-layer={layer}-" + run_name
+
+    run = wandb.init(name=run_name, **init_dict)
+    run.config.update(train_config)
+    run.config.update(fsdp_config, allow_val_change=True)
+    return run
 
 
 def get_dataloaders(
@@ -82,55 +108,58 @@ def get_dataloaders(
         def __getitem__(self, idx):
             return self.data[idx]
 
-    if rank == 0: # Only the main process (rank 0) will save the data
-        save_path = os.path.join(data_path, "layer2dataset.pt")
-        layer2dataset = torch.load(save_path)
-        layer2dataset = layer2dataset[layer_idx]
+    dataloaders = []
+    for data_name in ['train', 'eval']:
+        if rank == 0: # Only the main process (rank 0) will save the data
+            save_path = os.path.join(data_path, f"{data_name}_layer2dataset.pt")
+            layer2dataset = torch.load(save_path)
+            layer2dataset = layer2dataset[layer_idx]
 
-    if rank == 0:  # Only the main process (rank 0) will load the data
-        save_path = os.path.join(data_path, "layer2dataset.pt")
-        layer2dataset = torch.load(save_path)
-        data = layer2dataset[layer_idx]
-    else:
-        data = None
-
-    # Broadcast the data to all ranks
-    if world_size > 1:
-        if rank == 0:
-            # Get the total number of tensors and their shapes
-            num_tensors = len(data)
-            shapes = [tensor.shape for tensor in data]
+        if rank == 0:  # Only the main process (rank 0) will load the data
+            save_path = os.path.join(data_path, "layer2dataset.pt")
+            layer2dataset = torch.load(save_path)
+            data = layer2dataset[layer_idx]
         else:
-            num_tensors = None
-            shapes = None
+            data = None
 
-        # Broadcast num_tensors and shapes
-        num_tensors = dist.broadcast_object_list([num_tensors], src=0)[0]
-        shapes = dist.broadcast_object_list([shapes], src=0)[0]
+        # Broadcast the data to all ranks
+        if world_size > 1:
+            if rank == 0:
+                # Get the total number of tensors and their shapes
+                num_tensors = len(data)
+                shapes = [tensor.shape for tensor in data]
+            else:
+                num_tensors = None
+                shapes = None
 
-        # Broadcast each tensor
-        if rank != 0:
-            data = [torch.zeros(shape) for shape in shapes]
-        for i in range(num_tensors):
-            dist.broadcast(data[i], src=0)
-    else:
-        # Non-distributed case: data is already loaded on the single process
-        pass  # No need to do anything, data is already set
+            # Broadcast num_tensors and shapes
+            num_tensors = dist.broadcast_object_list([num_tensors], src=0)[0]
+            shapes = dist.broadcast_object_list([shapes], src=0)[0]
+
+            # Broadcast each tensor
+            if rank != 0:
+                data = [torch.zeros(shape) for shape in shapes]
+            for i in range(num_tensors):
+                dist.broadcast(data[i], src=0)
+        else:
+            # Non-distributed case: data is already loaded on the single process
+            pass  # No need to do anything, data is already set
 
 
-    # Create the dataset
-    dataset = Layer2Dataset(data)
+        # Create the dataset
+        dataset = Layer2Dataset(data)
 
-    # Create the dataloader
-    sampler = torch.utils.data.distributed.DistributedSampler(dataset) if world_size > 1 else None
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=(sampler is None),
-        num_workers=1,
-        sampler=sampler,
-        pin_memory=True
-    )
+        # Create the dataloader
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset) if world_size > 1 else None
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=(sampler is None),
+            num_workers=1,
+            sampler=sampler,
+            pin_memory=True
+        )
+        dataloaders.append(dataloader)
     return dataloader, dataloader
 
 
@@ -208,7 +237,7 @@ def launch_training(args):
     wandb_run = None
     if not args.no_wandb:
         if not args.enable_fsdp or rank==0:
-            wandb_run = setup_wandb(distill_config, fsdp_config, **kwargs)  
+            wandb_run = setup_wandb(layer_idx, distill_config, fsdp_config, **kwargs)  
 
     # ------------------------
     # 2. LOAD PRETRAINED MODEL
@@ -436,9 +465,8 @@ def main():
         args.layer_idx = layer_idx 
         configs.append(args)
 
-    launch_training(args)
-
-    breakpoint()
+    # launch_training(args)
+    # breakpoint()
 
     # ray was killing workers due to OOM, but it didn't seem to be necessary 
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"

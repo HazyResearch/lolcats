@@ -293,39 +293,55 @@ def main():
     from collections import defaultdict
     layer2dataset = defaultdict(list)
     from tqdm import tqdm
-    pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank}", dynamic_ncols=True)
-    for step, batch in enumerate(pbar):
-        for key in batch.keys():
-            if args.enable_fsdp:
-                batch[key] = batch[key].to(local_rank)
-            else:
-                if is_xpu_available():
-                    batch[key] = batch[key].to('xpu:0')
+
+    for data_name, dataloader in [('train', train_dataloader), ('eval', eval_dataloader)]:
+        layer2dataset_so_far = []
+        pbar = tqdm(dataloader,colour="green", desc=f"Rank {rank}", dynamic_ncols=True)
+        for step, batch in enumerate(pbar):
+            for key in batch.keys():
+                if args.enable_fsdp:
+                    batch[key] = batch[key].to(local_rank)
                 else:
-                    batch[key] = batch[key].to('cuda:0')
-        # Ensure no gradients are computed for this scope to save memory
-        with torch.no_grad():
-            outputs = get_outputs(model, batch, rank=rank, local_rank=local_rank)
-            for idx, hidden_state in enumerate(outputs[:-1]):  
-                hidden_state = model.model.layers[idx].input_layernorm(hidden_state)
-                layer2dataset[idx].append(hidden_state)
-        pbar.set_description(f"Rank {rank}; Dataset size: {len(layer2dataset[0])}")
-        if step > 2: break
+                    if is_xpu_available():
+                        batch[key] = batch[key].to('xpu:0')
+                    else:
+                        batch[key] = batch[key].to('cuda:0')
+            # Ensure no gradients are computed for this scope to save memory
+            with torch.no_grad():
+                outputs = get_outputs(model, batch, rank=rank, local_rank=local_rank)
+                for idx, hidden_state in enumerate(outputs[:-1]):  
+                    hidden_state = model.model.layers[idx].input_layernorm(hidden_state)
+                    layer2dataset[idx].append(hidden_state)
+            pbar.set_description(f"Rank {rank}; Dataset size: {len(layer2dataset[0])}")
+            
+            # do it in chunks to shift stuff to the CPU
+            if step % 200 == 0: 
+                print(f"Synchronizing {step=}!")
+                dist.barrier()
+                layer2dataset_collect = gather_layer2dataset(layer2dataset, world_size, rank)
+                if rank == 0:
+                    layer2dataset_so_far.append(layer2dataset_collect)
+                dist.barrier()
+                # Clear the GPU memory after gathering
+                layer2dataset.clear()
+                torch.cuda.empty_cache()
 
-    dist.barrier()
-    layer2dataset = gather_layer2dataset(layer2dataset, world_size, rank)
-    dist.barrier()
+        # Save the results
+        if rank == 0: # Only the main process (rank 0) will save the data
+            combined_layer2dataset = {}
+            for layer_dict in layer2dataset_so_far:
+                for layer_idx, hidden_states in layer_dict.items():
+                    if layer_idx not in combined_layer2dataset:
+                        combined_layer2dataset[layer_idx] = []
+                    combined_layer2dataset[layer_idx].extend(hidden_states)
 
-    # Save the results
-    if rank == 0: # Only the main process (rank 0) will save the data
-        save_dir="/home/simarora/code/lolcats/data/saved_output"
-        print(f"Rank {rank}; Num layers: {len(layer2dataset)}; Dataset size: {len(layer2dataset[0])}")
-        os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, "layer2dataset.pt")
-        torch.save(layer2dataset, save_path)
-        print(f"Saved synchronized layer2dataset to {save_path}")
+            save_dir="/home/simarora/code/lolcats/data/saved_output"
+            print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"{data_name}_layer2dataset.pt")
+            torch.save(combined_layer2dataset, save_path)
+            print(f"Saved synchronized {data_name}_layer2dataset to {save_path}")
     dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()
-    
