@@ -56,6 +56,7 @@ ZERO_SHOT = [
     ('arc-challenge', 0),
     ('arc-easy', 0),
     ('winogrande', 0),
+    ('hendrycksTest', 5),
     # TODO: include MMLU too
 ]
 

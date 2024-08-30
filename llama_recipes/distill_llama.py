@@ -207,7 +207,7 @@ def setup_wandb(train_config, fsdp_config, run_name = None, **kwargs):
     """
     Setup WandB for logging
     """
-    try: 
+    try:
         import wandb
     except ImportError:
         raise ImportError(
