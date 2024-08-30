@@ -42,7 +42,7 @@ def _rename_sharded(n: str) -> str:
     return n
 
 
-def get_trainable_weights(model: torch.nn.Module) -> dict:
+def get_trainable_weights(model: torch.nn.Module, keep_window_factors: bool = True) -> dict:
     """
     Get the state_dict of the model with only trainable parameters
     - state_dict() of FSDP-wrapped model collects weights
@@ -56,7 +56,7 @@ def get_trainable_weights(model: torch.nn.Module) -> dict:
     save_params = [_rename_sharded(n) for n, p in model.named_parameters() if p.requires_grad]
     named_parameters = list(state_dict.keys())
     for n in named_parameters:
-        if n not in save_params and 'window_factors' not in n:  # hack
+        if n not in save_params and ('window_factors' not in n or not keep_window_factors):  # hack
             del state_dict[n]
     return state_dict
 
@@ -384,14 +384,18 @@ def load_sharded_model_single_gpu(model, model_path=None, cfg=None, rank=None):
         if rank == 0:
              print(f"loading model from model path: {model_path} ")
     # reader = FileSystemReader(model_path)
+    keep_window_factors = False if 'no_distill' in model_path else True
     state_dict = {
-        "model": get_trainable_weights(model)
+        "model": get_trainable_weights(model, keep_window_factors=keep_window_factors)
     }
+    for k, v in state_dict['model'].items():
+        print(k)
     dist_cp.load_state_dict(
         state_dict=state_dict,
         storage_reader= FileSystemReader(model_path),
         no_dist=True,
     )
+
     model = load_trainable_weights(model, state_dict, rank=0)
     print(f"Sharded state checkpoint loaded from {model_path}")
     return model

@@ -107,7 +107,11 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         'test': get_seq2seq_loader(test_set, tokenizer, 'test', **loader_kwargs),
     }
     # Evaluation metric
-    metric = load_metric(download_metric(), 'gov_report')  # hack but we want rouge
+    try:
+        metric = load_metric(download_metric(), 'gov_report')  # hack but we want rouge
+    except Exception as e:
+        print(f'Error loading metric: {e}')
+        metric = None
 
     # Finishing touches
     for k, v in dataloaders.items():  # Make tokenizer accessible
