@@ -160,7 +160,7 @@ def get_dataloaders(
             pin_memory=True
         )
         dataloaders.append(dataloader)
-    return dataloader, dataloader
+    return dataloaders[0], dataloaders[1]
 
 
 def launch_training(args):
