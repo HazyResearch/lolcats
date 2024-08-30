@@ -82,6 +82,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         results dictionary containing average training and validation loss
         best_checkpoint_path: The path to the best checkpoint
     """
+    print(f"{type(max_optimizer_steps)=}")
     loss_computer = LossComputer(**train_config.trainer)
 
     if rank == 0 or rank is None:

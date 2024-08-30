@@ -18,7 +18,7 @@ model:
     type: llama3
 
 attention:
-  attention_type: lolcats_llama_window_tk_faster
+  attention_type: lolcats_llama_window_tk
   state_chunk_len: 1024
   window_size: 64
   affine_attention_factors: false
