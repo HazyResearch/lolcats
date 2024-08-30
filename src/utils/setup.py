@@ -111,7 +111,7 @@ def update_config_from_args(config: DictConfig,
     
     # Optimizer
     for arg in ['lr', 'weight_decay']:
-        if args not in ignore_args:
+        if arg not in ignore_args:
             argval = getattr(args, arg, None)
             if argval is not None:
                 setattr(config.optimizer, arg, argval)
