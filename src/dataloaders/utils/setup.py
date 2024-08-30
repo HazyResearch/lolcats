@@ -65,7 +65,7 @@ def get_tokenizer_from_config(model_config):
         except Exception as e:
             try:
                 tokenizer = AutoTokenizer.from_pretrained(**model_config)
-                print("-> Bad: LlamaTokenizer.from_pretrained(model_path)", e)
+                print("-> Bad LlamaTokenizer.from_pretrained(model_path)", e)
                 print("-> But resolved with: AutoTokenizer.from_pretrained(**model_config)")
             except Exception as e2:
                 print("-> Error with AutoTokenizer.from_pretrained(**model_config)", e2)

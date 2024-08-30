@@ -343,7 +343,7 @@ def main():
                                                             merge_loras=False,
                                                             peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                             train_attention=False)
-        if rank == 0:
+        if True:  # rank == 0:
             if distill_config.trainer.name is not None or args.attn_mlp_checkpoint_path is not None:
                 # if args.replicate == 64:
                 #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
@@ -365,9 +365,16 @@ def main():
                                                         print_model=args.verbose,
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
-        if rank == 0:
+        if True:  # rank == 0:
             model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
                                                 cfg=finetune_config, rank=rank)
+            
+        if rank == 0:
+            print_header('** Sanity check model weights **')
+            for n, p in model.named_parameters():
+                # if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
+                if 'layers.0.' in n:
+                    print(f'-> {n}:\n', p)
     # Back to LM Eval model
     lm.model = model
     model = lm
