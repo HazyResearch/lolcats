@@ -13,7 +13,8 @@ def create_peft_config(model: Module,
                        peft_config: dict, 
                        target_dtype: str = 'bfloat16',
                        preserve_requires_grad: bool = False,
-                       use_gradient_checkpointing: bool = None):
+                       use_gradient_checkpointing: bool = None,
+                       add_self_attn_prefix: bool = True):
     """
     Create a parameter-efficient finetuning model (e.g., attaching LoRAs)
     -> Assumes that all non-trainable weights have been frozen already.
@@ -29,7 +30,8 @@ def create_peft_config(model: Module,
         try:
             target_modules = []  # hack to only do self_attn terms
             for module_name in peft_config['kwargs']['target_modules']:
-                if '_proj' in module_name and 'self_attn' not in module_name:
+                if ('_proj' in module_name and 'self_attn' not in module_name 
+                    and add_self_attn_prefix):
                     target_modules.append(f'self_attn.{module_name}')
                 elif '_proj' in module_name:
                     target_modules.append(module_name)
