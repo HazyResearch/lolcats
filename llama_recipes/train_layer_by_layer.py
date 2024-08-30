@@ -64,7 +64,7 @@ from src.model.load_model import (
 )
 from src.model.convert_model import toggle_attention
 
-from distill_llama import get_run_name_from_checkpoint, get_args, setup_wandb, setup_fsdp_config
+from llama_recipes.distill_llama import get_run_name_from_checkpoint, get_args, setup_wandb, setup_fsdp_config
 
 def get_dataloaders(
     data_path,
@@ -413,6 +413,7 @@ def launch_training(args):
 ##### RAY LAUNCHER #####
 
 import ray
+import sys
 from pathlib import Path
 
 def execute_config(args):
@@ -434,9 +435,6 @@ def main():
     for layer_idx in range(layers):
         args.layer_idx = layer_idx 
         configs.append(args)
-    launch_training(args)
-
-    breakpoint()
 
     # ray was killing workers due to OOM, but it didn't seem to be necessary 
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"
@@ -456,7 +454,6 @@ def main():
         for config, error in ray.get(complete):
             if error is not None:
                 failed += 1
-                config.print()
                 print(error)
             completed += 1
         print(f"Completed: {completed} ({completed / layers:0.1%} -- {failed} failed) | Total layers: {layers}")
