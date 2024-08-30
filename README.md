@@ -139,7 +139,7 @@ See `configs/model/` for model configs used in the below commands, and `configs/
 
 ```
 python distill_llama.py --model_config distill_mistral_7b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -151,7 +151,7 @@ python distill_llama.py --model_config distill_mistral_7b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_mistral_7b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -163,7 +163,7 @@ python distill_llama.py --model_config distill_mistral_7b_lk_smd_wtk64_fd64_w01 
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -175,7 +175,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -187,7 +187,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 
 ```
 python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -199,7 +199,7 @@ python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -215,7 +215,7 @@ The above scripts will save two checkpoints: (1) for the learned attention layer
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
