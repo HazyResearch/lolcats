@@ -92,74 +92,75 @@ def setup_wandb(layer, train_config, fsdp_config, run_name = None, **kwargs):
     run.config.update(fsdp_config, allow_val_change=True)
     return run
 
+from torch.utils.data import Dataset, DataLoader
+import h5py
+import numpy as np
+import h5py
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch.distributed as dist
+import os
 
-def get_dataloaders(
-    data_path,
-    layer_idx, world_size, rank, batch_size=1
-):
-    from torch.utils.data import Dataset, DataLoader
-    class Layer2Dataset(Dataset):
-        def __init__(self, data):
-            self.data = data
 
-        def __len__(self):
-            return len(self.data)
+import h5py
+import torch
+from torch.utils.data import Dataset, DataLoader
+import os
+DATA_PATH='/data_ephemeral/sim//saved_output'
+class HDF5Dataset(Dataset):
+    def __init__(self, data_path, data_name, layer_idx):
+        self.data_path = data_path
+        self.data_name = data_name
+        self.layer_idx = layer_idx
+        self.file_paths = []
+        self.datasets = []
+        self.cumulative_sizes = [0]
 
-        def __getitem__(self, idx):
-            return self.data[idx]
+        # Find all relevant HDF5 files
+        for file in os.listdir(data_path):
+            if data_name in file and file.endswith(".h5"):
+                file_path = os.path.join(data_path, file)
+                self.file_paths.append(file_path)
+                with h5py.File(file_path, 'r') as f:
+                    for key in f.keys():
+                        if key.startswith('hidden_states_'):
+                            self.datasets.append((file_path, key))
+                            self.cumulative_sizes.append(self.cumulative_sizes[-1] + f[key].shape[0])
+        print(f"{data_name} dataset size: {self.cumulative_sizes[-1]}")
 
+    def __len__(self):
+        return self.cumulative_sizes[-1]
+
+    def __getitem__(self, idx):
+        dataset_idx = next(i for i, size in enumerate(self.cumulative_sizes) if size > idx) - 1
+        local_idx = idx - self.cumulative_sizes[dataset_idx]
+        file_path, dataset_name = self.datasets[dataset_idx]
+
+        with h5py.File(file_path, 'r') as f:
+            dataset = f[dataset_name]
+            return torch.from_numpy(dataset[local_idx, self.layer_idx])
+
+def get_dataloaders(data_path, layer_idx, world_size, rank, batch_size=1):
     dataloaders = []
     for data_name in ['train', 'eval']:
-        if rank == 0: # Only the main process (rank 0) will save the data
-            save_path = os.path.join(data_path, f"{data_name}_layer2dataset.pt")
-            layer2dataset = torch.load(save_path)
-            layer2dataset = layer2dataset[layer_idx]
-
-        if rank == 0:  # Only the main process (rank 0) will load the data
-            save_path = os.path.join(data_path, "layer2dataset.pt")
-            layer2dataset = torch.load(save_path)
-            data = layer2dataset[layer_idx]
-        else:
-            data = None
-
-        # Broadcast the data to all ranks
+        breakpoint()
+        dataset = HDF5Dataset(data_path, data_name, layer_idx)
+        
         if world_size > 1:
-            if rank == 0:
-                # Get the total number of tensors and their shapes
-                num_tensors = len(data)
-                shapes = [tensor.shape for tensor in data]
-            else:
-                num_tensors = None
-                shapes = None
-
-            # Broadcast num_tensors and shapes
-            num_tensors = dist.broadcast_object_list([num_tensors], src=0)[0]
-            shapes = dist.broadcast_object_list([shapes], src=0)[0]
-
-            # Broadcast each tensor
-            if rank != 0:
-                data = [torch.zeros(shape) for shape in shapes]
-            for i in range(num_tensors):
-                dist.broadcast(data[i], src=0)
+            sampler = torch.utils.data.distributed.DistributedSampler(dataset)
         else:
-            # Non-distributed case: data is already loaded on the single process
-            pass  # No need to do anything, data is already set
-
-
-        # Create the dataset
-        dataset = Layer2Dataset(data)
-
-        # Create the dataloader
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset) if world_size > 1 else None
+            sampler = None
+        
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=(sampler is None),
-            num_workers=1,
+            num_workers=4,
             sampler=sampler,
             pin_memory=True
         )
         dataloaders.append(dataloader)
+    
     return dataloaders[0], dataloaders[1]
 
 
@@ -386,7 +387,7 @@ def launch_training(args):
 
     # Get data
     train_dataloader, eval_dataloader = get_dataloaders(
-        data_path='/home/simarora/code/lolcats/data/saved_output',
+        data_path=DATA_PATH, # TODO: override with your data path
         layer_idx=0, world_size=world_size, rank=rank, batch_size=1
     )
     if not args.enable_fsdp or rank == 0:
@@ -458,15 +459,15 @@ def execute_config(args):
 
 def main():
     args = get_args()
-    layers = 10
+    layers = 32 # add checks for other models.
     num_gpus_per_job = 1
     configs = []
     for layer_idx in range(layers):
         args.layer_idx = layer_idx 
         configs.append(args)
 
-    # launch_training(args)
-    # breakpoint()
+    launch_training(args)
+    breakpoint()
 
     # ray was killing workers due to OOM, but it didn't seem to be necessary 
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"
