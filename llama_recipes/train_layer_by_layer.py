@@ -8,6 +8,7 @@ from os.path import join
 import dataclasses
 import random
 import argparse  # ours
+from tqdm import tqdm
 
 from pkg_resources import packaging
 
@@ -131,12 +132,11 @@ def get_dataloaders(
     )
     return dataloader, dataloader
 
-
-def launch_training(layer_idx):
+def launch_training(args):
     # ---------
     # 1. SET UP
     # ---------
-    args = get_args()
+    layer_idx = args.layer_idx
 
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -407,8 +407,60 @@ def launch_training(layer_idx):
                 wandb_run.summary[f'attn_{k}'] = v
         print('-> Find weights at:', best_checkpoint_path)
 
+# def main():
+#     for i in range(126): launch_training(i)
+
+##### RAY LAUNCHER #####
+
+import ray
+from pathlib import Path
+
+def execute_config(args):
+    try: 
+        project_root = Path(__file__).resolve().parent
+        # Add the project root and src directory to the Python path
+        sys.path.append(str(project_root))
+        sys.path.append(str(project_root / 'src'))
+        launch_training(args)
+    except Exception as e:
+        return args, e
+    return args, None
+
 def main():
-    for i in range(126): launch_training(i)
+    args = get_args()
+    layers = 10
+    num_gpus_per_job = 1
+    configs = []
+    for layer_idx in range(layers):
+        args.layer_idx = layer_idx 
+        configs.append(args)
+    launch_training(args)
+
+    breakpoint()
+
+    # ray was killing workers due to OOM, but it didn't seem to be necessary 
+    os.environ["RAY_memory_monitor_refresh_ms"] = "0"
+    ray.init(ignore_reinit_error=True, log_to_driver=False, runtime_env={
+        "py_modules": [str(Path(__file__).resolve().parent)],
+        "env_vars": {"PYTHONPATH": os.environ.get("PYTHONPATH", "")}
+    })
+
+    # Run each script in parallel using Ray
+    completed, failed = 0, 0
+    print(f"Completed: {completed} ({completed / layers:0.1%}) | Total layers: {layers}")
+    remote = ray.remote(num_gpus=num_gpus_per_job)(execute_config)
+    futures = [remote.remote(config) for config in configs]
+        
+    while futures:
+        complete, futures = ray.wait(futures)
+        for config, error in ray.get(complete):
+            if error is not None:
+                failed += 1
+                config.print()
+                print(error)
+            completed += 1
+        print(f"Completed: {completed} ({completed / layers:0.1%} -- {failed} failed) | Total layers: {layers}")
+    ray.shutdown()
 
 if __name__ == "__main__":
     main()
