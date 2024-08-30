@@ -264,7 +264,6 @@ def main():
     # Get data
     finetune_config, args = prepare_finetune_configs(args, model_config, 
                                                      args.finetune_config)
-    # finetune_config = update_config_from_args(finetune_config, args)
     finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
     train_dataloader, eval_dataloader, finetune_config = get_dataloaders(finetune_config, tokenizer)
     if not args.enable_fsdp or rank == 0:
@@ -294,8 +293,72 @@ def main():
                 gathered_layer2dataset[layer] = gathered_data_list
         return gathered_layer2dataset
 
+    import h5py 
+    import numpy as np
+    from concurrent.futures import ThreadPoolExecutor
+    import multiprocessing
+
+    def calculate_chunk_size(sample_shape, num_layers):
+        element_size = 4  # Assuming float32
+        max_chunk_size = 4 * 1024 * 1024 * 1024  # 4GB
+        elements_per_sample = np.prod(sample_shape) * num_layers
+        max_samples_per_chunk = max_chunk_size // (elements_per_sample * element_size)
+        return max(1, min(1000, max_samples_per_chunk))  # Ensure at least 1 sample per chunk
+
+    def save_chunk_to_hdf5(file_path, chunk_data, chunk_start):
+        with h5py.File(file_path, 'a') as f:
+            dataset = f['hidden_states']
+            chunk_end = chunk_start + len(chunk_data)
+            dataset[chunk_start:chunk_end] = chunk_data
+
+    def save_to_hdf5(layer2dataset, save_path):
+        num_layers = len(layer2dataset)
+        num_samples = len(next(iter(layer2dataset.values())))
+        sample_shape = next(iter(layer2dataset.values()))[0].shape
+        chunk_size = min(calculate_chunk_size(sample_shape, num_layers) - 2, num_samples)
+
+        with h5py.File(save_path, 'w') as f:
+            for dataset_idx in range((num_samples + chunk_size - 1) // chunk_size):
+                start_sample = dataset_idx * chunk_size
+                end_sample = min((dataset_idx + 1) * chunk_size, num_samples)
+                dataset_samples = end_sample - start_sample
+                chunk_size = min(dataset_samples, chunk_size)
+
+                f.create_dataset(f'hidden_states_{dataset_idx}', 
+                                    shape=(dataset_samples, num_layers, *sample_shape),
+                                    dtype=np.float32,
+                                    chunks=(chunk_size, num_layers, *sample_shape),
+                                    compression='gzip',
+                                    compression_opts=1)
+
+        with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as executor:
+            for dataset_idx in range((num_samples + chunk_size - 1) // chunk_size):
+                start_sample = dataset_idx * chunk_size
+                end_sample = min((dataset_idx + 1) * chunk_size, num_samples)
+
+                for chunk_start in range(start_sample, end_sample, chunk_size):
+                    chunk_end = min(chunk_start + chunk_size, end_sample)
+                    chunk_data = np.zeros((chunk_end - chunk_start, num_layers, *sample_shape), dtype=np.float32)
+                    for layer_idx, hidden_states in layer2dataset.items():
+                        chunk_data[:, layer_idx] = [state.float().cpu().numpy() for state in hidden_states[chunk_start:chunk_end]]
+                    executor.submit(save_chunk_to_hdf5, save_path, f'hidden_states_{dataset_idx}', chunk_data, chunk_start - start_sample)
+
+
+    def gather_and_save(layer2dataset, world_size, rank, step, data_name, model_name, seqlen, save_dir):
+        layer2dataset_collect = gather_layer2dataset(layer2dataset, world_size, rank)
+        if rank == 0:
+            combined_layer2dataset = defaultdict(list)
+            for layer_idx, hidden_states in layer2dataset_collect.items():
+                combined_layer2dataset[layer_idx].extend(hidden_states)
+            print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
+
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"{model_name}-{data_name}_seqlen{seqlen}-step{step}.h5")
+            save_to_hdf5(combined_layer2dataset, save_path)
+            print(f"Saved synchronized {data_name} dataset to {save_path}")
 
     layer2dataset = defaultdict(list)
+    save_dir="/data_ephemeral/sim/saved_output"
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
     seqlen = distill_config.dataset['dataset_config']['chunk_size']
     if "8b" in model_name.lower(): interval = 100 
@@ -324,37 +387,13 @@ def main():
             pbar.set_description(f"Rank {rank}; Dataset size: {len(layer2dataset[0])}")
             
             # do it in chunks to shift stuff to the CPU
-            if step % interval == 0 or step == len(pbar) - 1: 
-                
-                print(f"Synchronizing {step=}!")
-                layer2dataset_collect = gather_layer2dataset(layer2dataset, world_size, rank)
-                if rank == 0:
-                    layer2dataset_so_far.append(layer2dataset_collect)
-                # Clear the GPU memory after gathering
+            if step > 0 and (step % interval == 0 or step == len(pbar) - 1): 
+                if rank == 0: 
+                    print(f"Synchronizing at {step=}.")
+                gather_and_save(layer2dataset, world_size, rank, step, data_name, model_name, seqlen, save_dir)
+                dist.barrier()
                 layer2dataset.clear()
                 torch.cuda.empty_cache()
-
-                # Save the results so far
-                if rank == 0: # Only the main process (rank 0) will save the data
-                    combined_layer2dataset = {}
-                    for layer_dict in layer2dataset_so_far:
-                        for layer_idx, hidden_states in layer_dict.items():
-                            if layer_idx not in combined_layer2dataset:
-                                combined_layer2dataset[layer_idx] = []
-                            combined_layer2dataset[layer_idx].extend(hidden_states)
-                    save_dir="/scratch/sim/saved_output"
-                    print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
-                    os.makedirs(save_dir, exist_ok=True)
-                    save_path = os.path.join(save_dir, f"{model_name}-{data_name}_seqlen{seqlen}-step{step}_layer2dataset.pt")
-                    torch.save(combined_layer2dataset, save_path)
-                    print(f"Saved synchronized {data_name}_layer2dataset to {save_path}")
-
-                    # Clear CPU memory after saving
-                    del combined_layer2dataset
-                    del layer2dataset_so_far
-                    import gc
-                    gc.collect()
-                layer2dataset_so_far = []
 
     dist.destroy_process_group()
 
