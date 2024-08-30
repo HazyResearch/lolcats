@@ -41,7 +41,7 @@ from llama_recipes.trainer_layer_by_layer import (
     print_model_size,
     get_policies,
 )
-from llama_recipes.model_checkpointing.distill_checkpoint_handler import ( load_model_sharded )
+from llama_recipes.trainer_layer_by_layer import ( load_model_sharded )
 
 from accelerate.utils import is_xpu_available
 
@@ -65,6 +65,7 @@ from src.model.load_model import (
 from src.model.convert_model import toggle_attention
 
 from llama_recipes.distill_llama import get_run_name_from_checkpoint, get_args, setup_wandb, setup_fsdp_config
+
 
 def get_dataloaders(
     data_path,
@@ -131,6 +132,7 @@ def get_dataloaders(
         pin_memory=True
     )
     return dataloader, dataloader
+
 
 def launch_training(args):
     # ---------
@@ -324,7 +326,7 @@ def launch_training(args):
             apply_fsdp_checkpointing(model)
 
         if args.load_distill_checkpoint:
-            load_model_sharded(model, rank, distill_config)
+            load_model_sharded(layer_idx, model, rank, distill_config)
 
     elif not model_config.model.quantization and not args.enable_fsdp:
         if is_xpu_available():
@@ -369,6 +371,7 @@ def launch_training(args):
     # Start the training process
     max_optimizer_steps = getattr(distill_config.optimizer, 'max_optimizer_steps', None)
     results, best_checkpoint_path = train(
+        layer_idx,
         model,
         train_dataloader,
         eval_dataloader,
@@ -392,12 +395,12 @@ def launch_training(args):
         pass  # Model checkpoint already saved
     elif fsdp_config.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
         # Load sharded weights across GPUs into model
-        load_model_sharded(model, rank, distill_config)  # Test loading the sharded weights
+        load_model_sharded(layer_idx, model, rank, distill_config)  # Test loading the sharded weights
         if rank == 0:  # debugging
             print_header('** Sanity check model weights **')
             for n, p in model.named_parameters():
-                if ('layers.0.' in n and 'base_attn' not in n and 
-                    '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+                if ('base_attn' not in n and 
+                    'mlp.' not in n and '.block_sparse_moe' not in n):
                     print(f'-> {n}:\n', p)
    
     if not args.enable_fsdp or rank==0:
@@ -407,11 +410,8 @@ def launch_training(args):
                 wandb_run.summary[f'attn_{k}'] = v
         print('-> Find weights at:', best_checkpoint_path)
 
-# def main():
-#     for i in range(126): launch_training(i)
 
 ##### RAY LAUNCHER #####
-
 import ray
 import sys
 from pathlib import Path
@@ -435,6 +435,10 @@ def main():
     for layer_idx in range(layers):
         args.layer_idx = layer_idx 
         configs.append(args)
+
+    launch_training(args)
+
+    breakpoint()
 
     # ray was killing workers due to OOM, but it didn't seem to be necessary 
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"
