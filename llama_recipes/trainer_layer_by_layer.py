@@ -295,7 +295,7 @@ class LossComputer():
         a_pred = a_pred.contiguous().view(-1, k_len)
         a_true = a_true.contiguous().view(-1, k_len)
         loss_xent += self.criterion_xent(a_pred[:, :self.n_keys], a_true[:, :self.n_keys])
-        loss = loss_xent * self.xent_factor / n_layers
+        loss = loss_xent / n_layers
         loss_metrics = {
             'loss_xent': loss, 
             'loss': loss,
@@ -379,7 +379,7 @@ def train(layer, model, train_dataloader, eval_dataloader, tokenizer,
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
                 model.train()
-                print(f'-> {rank=}, {step=}')
+                # print(f'-> {rank=}, {step=}')
                 if train_config.enable_fsdp:
                     if is_xpu_available():
                         batch = batch.to(torch.device(f"xpu:{local_rank}"))

@@ -135,7 +135,6 @@ class HDF5Dataset(Dataset):
         dataset_idx = next(i for i, size in enumerate(self.cumulative_sizes) if size > idx) - 1
         local_idx = idx - self.cumulative_sizes[dataset_idx]
         file_path, dataset_name = self.datasets[dataset_idx]
-
         with h5py.File(file_path, 'r') as f:
             dataset = f[dataset_name]
             return torch.from_numpy(dataset[local_idx, self.layer_idx])
@@ -143,7 +142,6 @@ class HDF5Dataset(Dataset):
 def get_dataloaders(data_path, layer_idx, world_size, rank, batch_size=1):
     dataloaders = []
     for data_name in ['train', 'eval']:
-        breakpoint()
         dataset = HDF5Dataset(data_path, data_name, layer_idx)
         
         if world_size > 1:
@@ -458,16 +456,18 @@ def execute_config(args):
     return args, None
 
 def main():
+    import copy 
+
     args = get_args()
     layers = 32 # add checks for other models.
     num_gpus_per_job = 1
     configs = []
     for layer_idx in range(layers):
-        args.layer_idx = layer_idx 
-        configs.append(args)
+        current_args = copy.deepcopy(args)
+        current_args.layer_idx = layer_idx 
+        configs.append(current_args)
 
-    launch_training(args)
-    breakpoint()
+    launch_training(current_args)
 
     # ray was killing workers due to OOM, but it didn't seem to be necessary 
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"

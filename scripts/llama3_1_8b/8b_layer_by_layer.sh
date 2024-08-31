@@ -2,7 +2,7 @@
 export PYTHONPATH=/home/simarora/code/lolcats/
 
 # Save the layer-by-layer outputs
-torchrun --nnodes 1 --nproc_per_node 1 /home/simarora/code/lolcats/llama_recipes/save_outputs.py \
+torchrun --nnodes 1 --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes/save_outputs.py \
     --model_config llama3_1_8b/distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
     --distill_config llama3_1_8b/distill_xent0_mse1000_lr1e-2 \
     --finetune_config llama3_1_8b/finetune_lora_qkvo_alpaca_clean \
