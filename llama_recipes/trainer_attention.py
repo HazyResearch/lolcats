@@ -209,7 +209,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
                 model.train()
-                print(f'-> {rank=}, {step=}')
+                # print(f'-> {rank=}, {step=}')
                 for key in batch.keys():
                     if key == 'labels':
                         batch[key] = None  # don't use labels for attention distillation
@@ -458,6 +458,9 @@ def evaluate_attn(model, train_config, eval_dataloader,
     _epoch = f' {epoch}' if epoch is not None else ''
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
+        if step >= 100: 
+            break
+
         for key in batch.keys():
             if train_config.enable_fsdp:
                 batch[key] = batch[key].to(local_rank)

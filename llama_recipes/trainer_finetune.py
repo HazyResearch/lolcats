@@ -297,6 +297,8 @@ def evaluate_lm(model, train_config, eval_dataloader,
     _epoch = f' {epoch}' if epoch is not None else ''
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
+        if step >= 100: break 
+
         for key in batch.keys():
             if train_config.enable_fsdp:
                 batch[key] = batch[key].to(local_rank)
