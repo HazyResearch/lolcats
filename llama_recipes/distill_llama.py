@@ -52,8 +52,8 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     # load_model_checkpoint,
     # save_model_checkpoint,
 )
-from llama_recipes.trainer_attention_chunked import train as train_chunked
-from torch.distributed.optim import DistributedOptimizer
+# from llama_recipes.trainer_attention_chunked import train as train_chunked
+# from torch.distributed.optim import DistributedOptimizer
 
 from accelerate.utils import is_xpu_available
 
@@ -224,7 +224,7 @@ def setup_wandb(train_config, fsdp_config, run_name = None, **kwargs):
     return run
 
 
-def get_dataloaders(train_config, tokenizer):
+def get_dataloaders(train_config, tokenizer, no_shuffle_train: bool = False):
     """Return tuple of train_loader, eval_loader, updated train_config"""
     dataloaders  = load_data(train_config.dataset, train_config.dataloader)
     train_loader = dataloaders[train_config.trainer.train_split]
@@ -244,7 +244,8 @@ def get_dataloaders(train_config, tokenizer):
     train_config.batch_size_training = train_config.dataloader.batch_size
     train_config.val_batch_size = train_config.dataloader.batch_size
     
-    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer, "train")
+    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer,   # shuffle=mode=="train",
+                                            "train_no_shuffle" if no_shuffle_train else "train")  # hacky patch
     val_dl_kwargs = get_dataloader_kwargs(train_config, dataset_eval, tokenizer, "val")
     # val_dl_kwargs['collate_fn'] = eval_loader.collate_fn
 
@@ -308,10 +309,11 @@ def main():
 
     kwargs = vars(args)
 
-    if 'distill_long' in args.distill_config:
-        train = train_chunked
-    else:
-        train = _train_normal
+    # if 'distill_long' in args.distill_config:
+    #     train = train_chunked
+    # else:
+    #     train = _train_normal
+    train = _train_normal
 
     # Load distillation + attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
@@ -510,7 +512,7 @@ def main():
         if args.load_distill_checkpoint:
             load_model_sharded(model, rank, distill_config)
 
-    elif not model_config.model.quantization and not args.enable_fsdp:
+    else:  # if not model_config.model.quantization and not args.enable_fsdp:
         if is_xpu_available():
             model.to("xpu:0")
         elif torch.cuda.is_available():
@@ -538,18 +540,11 @@ def main():
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
     else:
-        if False:  # 'distill_long' in args.distill_config:
-            optimizer = DistributedOptimizer(
-                torch.optim.AdamW, model.parameters(), 
-                lr=distill_config.optimizer.lr,
-                weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
-            )
-        else:
-            optimizer = optim.AdamW(
-                model.parameters(),
-                lr=distill_config.optimizer.lr,
-                weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
-            )
+        optimizer = optim.AdamW(
+            model.parameters(),
+            lr=distill_config.optimizer.lr,
+            weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
+        )
         # optimizer = optim.SGD(
         #     model.parameters(),
         #     lr=distill_config.optimizer.lr,
