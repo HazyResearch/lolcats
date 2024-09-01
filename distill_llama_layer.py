@@ -10,6 +10,9 @@ python distill_llama_layer.py \
 --finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
 --lk_zero_init --verbose --seed 0 --replicate 0 \
 --layer_idx 0 --device 0 --lr 1e-3
+
+killed
+python distill_llama_layer.py --layer_idx 1 --device 1 --checkpoint_dir ./checkpoints --device 0 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 --finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 --lk_zero_init --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 --no_init_eval --project_name lolcats --replicate 1 --results_dir ./results --seed 0 --verbose --wandb_entity hazy-research
 """
 import sys
 import os
@@ -395,10 +398,14 @@ def main():
         model.model.layers[0].self_attn.load_state_dict(model_attn.state_dict())
 
     finetune_config, args = prepare_finetune_configs(args, model_config, args.finetune_config)
-    dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
-                            **distill_config.dataloader)
-    train_loader = dataloaders['train']
-    eval_loader  = dataloaders['validation']
+    try:
+        train_loader = dataloaders['train']
+        eval_loader  = dataloaders['validation']
+    except:
+        dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
+                                **distill_config.dataloader)
+        train_loader = dataloaders['train']
+        eval_loader  = dataloaders['validation']
 
     # Update distilling trainer to reflect layer-wise
     finetune_config.trainer.name = 'layer_finetune_xent_mse'

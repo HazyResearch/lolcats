@@ -33,6 +33,7 @@ class OurTrainer(DefaultTrainer):
         self.initial_eval = False  # Whether to evaluate before training
 
         self.teacher_layer = teacher_layer
+        self.teacher_layer.eval()
         for param in self.teacher_layer.parameters():
             param.requires_grad = False # freeze teacher
 
@@ -55,7 +56,10 @@ class OurTrainer(DefaultTrainer):
             inputs['position_ids'] = data['position_ids'].to(**_data_kwargs)
         
         with torch.no_grad():
-            y_true, a_true, _ = self.teacher_layer(**inputs, output_attentions=True, use_cache=False)
+            _n = data['hidden_states'].shape[-2]  # construct attention mask for ground-truth softmax
+            causal_mask = torch.ones((1, 1, _n, _n), **_data_kwargs).triu(1) * -1e8
+            # LlamaAttention processes mask as: attn_weights = attn_weights + causal_mask
+            y_true, a_true, _ = self.teacher_layer(**inputs, output_attentions=True, use_cache=False, attention_mask=causal_mask)
         y_pred, a_pred, _ = model(**inputs, output_attentions=True, use_cache=False)
     
         inputs = {k: v.cpu() for k, v in inputs.items()}  # save gpu memory
