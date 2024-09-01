@@ -1,14 +1,14 @@
 
 export PYTHONPATH=/home/simarora/code//lolcats/
 
-torchrun --nnodes 1 --nproc_per_node 8 \
-llama_recipes/save_llama_attn_inputs.py \
---model_config llama3_1_8b/distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_8b/distill_xent0_mse1000_lr1e-2 \
---finetune_config llama3_1_8b/finetune_lora_qkvo_alpaca_clean \
---layers_per_model 8 \
---verbose --replicate 0 --seed 0 \
---enable_fsdp --low_cpu_fsdp
+# torchrun --nnodes 1 --nproc_per_node 8 \
+# llama_recipes/save_llama_attn_inputs.py \
+# --model_config llama3_1_8b/distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
+# --distill_config llama3_1_8b/distill_xent0_mse1000_lr1e-2 \
+# --finetune_config llama3_1_8b/finetune_lora_qkvo_alpaca_clean \
+# --layers_per_model 8 \
+# --verbose --replicate 0 --seed 0 \
+# --enable_fsdp --low_cpu_fsdp
 
 CUDA_VISIBLE_DEVICES=4 python distill_llama_mini.py \
 --model_config llama3_1_8b/distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
