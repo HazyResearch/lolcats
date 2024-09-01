@@ -167,6 +167,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                 y_true, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                           window_factors, linear_factors,
                                                           window_size=self.window_size)
+                attn_weights = a_pred 
             else:
                 past_key_value.window_size = self.decode_window_size
                 if f_q.shape[2] == 1 and kv_seq_len > 1 and not self.training:  # Generating

@@ -149,6 +149,7 @@ class OurTrainer():
         eval_for_step = False
 
         # Initial eval
+        print(f"Evaluation strategy: {self.evaluation_strategy}")
         if self.initial_eval:
             print('')
             print('-> Initial eval')
@@ -179,8 +180,10 @@ class OurTrainer():
                 total_loss += loss
             desc = f"Training epoch {epoch} | loss: {total_loss / (ix + 1):.3f} | lr: {self.optimizer.param_groups[0]['lr']:.5f}"
             desc += f' | gradient step: {self.grad_step}'
+
             for k, v in train_metrics.items():
-                desc += f' | {k}: {v:.3f}'
+                if type(v) in [float, int]:
+                    desc += f' | {k}: {v:.3f}'
             pbar.set_description(desc)
 
             # Logging
@@ -196,9 +199,12 @@ class OurTrainer():
                     self.wandb.log(self.train_metrics, step=self.grad_step)
 
             if self.evaluation_strategy == 'steps':
-                if (self.grad_step % self.eval_steps == 0 and self.grad_step > 0 and not eval_for_step):
+                if (self.grad_step % self.eval_steps == 0 and self.grad_step > 0 and not eval_for_step) or (ix == len(pbar)-1):
+                    do_save = False
+                    if ix == len(pbar) - 1:
+                        do_save = False
                     # self.optimizer.zero_grad()  # Clear out grads before eval
-                    _eval_metrics = self.eval_step(model, step=self.grad_step)
+                    _eval_metrics = self.eval_step(model, step=self.grad_step, do_save=do_save)
                     # torch.cuda.empty_cache()
                     print(f'Grad Step {self.grad_step} eval metrics:', _eval_metrics)
                     eval_for_step = True
@@ -211,7 +217,7 @@ class OurTrainer():
                 break
         return model
 
-    def eval_step(self, model: nn.Module, step: int = None,
+    def eval_step(self, model: nn.Module, step: int = None, do_save=False,
                   **kwargs: any) -> dict[any]:
         """
         Evaluation loop over one epoch
@@ -235,11 +241,13 @@ class OurTrainer():
                 pd.DataFrame(self.eval_metrics_by_step).to_csv(self.results_path)
 
             # Save best metric and checkpoint
-            if self.grad_step % self.eval_steps == 0:
+            if self.grad_step % self.eval_steps == 0 or do_save:
                 if self.is_better(val_metric, self.best_val_metric):
                     self.best_val_metric = val_metric
                     self.best_val_metric_step = self.grad_step
                     # model.cpu()
+                    import os
+                    os.makedirs("/".join(self.best_val_checkpoint_path.split("/")[:-1]), exist_ok=True)
                     torch.save({
                         'model_state_dict': self.save_trainable_weights(model),
                         'step': self.grad_step, 
@@ -248,7 +256,7 @@ class OurTrainer():
                     # model.to(self.device)
                     print(f'\n-> Saved best model checkpoint to: {self.best_val_checkpoint_path}!')
 
-            if self.grad_step % 1000 == 0:
+            if self.grad_step % 1000 == 0 or do_save:
                 save_path = self.best_val_checkpoint_path.replace('.pt', f'_{self.grad_step}.pt')
                 torch.save({
                     'model_state_dict': self.save_trainable_weights(model),
