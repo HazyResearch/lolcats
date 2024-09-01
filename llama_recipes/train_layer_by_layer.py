@@ -106,21 +106,17 @@ import h5py
 import torch
 from torch.utils.data import Dataset, DataLoader
 import os
-DATA_PATH='/data_ephemeral/sim//saved_output'
+DATA_PATH='/data_ephemeral/sim/saved_output_check'
 class HDF5Dataset(Dataset):
     def __init__(self, data_path, data_name, layer_idx):
-        self.data_path = data_path
-        self.data_name = data_name
-        self.layer_idx = layer_idx
-        self.file_paths = []
+        self.data_path = os.path.join(data_path, f"layer{layer_idx}")
         self.datasets = []
         self.cumulative_sizes = [0]
 
         # Find all relevant HDF5 files
-        for file in os.listdir(data_path):
+        for file in os.listdir(self.data_path):
             if data_name in file and file.endswith(".h5"):
-                file_path = os.path.join(data_path, file)
-                self.file_paths.append(file_path)
+                file_path = os.path.join(self.data_path, file)
                 with h5py.File(file_path, 'r') as f:
                     for key in f.keys():
                         if key.startswith('hidden_states_'):
@@ -137,18 +133,16 @@ class HDF5Dataset(Dataset):
         file_path, dataset_name = self.datasets[dataset_idx]
         with h5py.File(file_path, 'r') as f:
             dataset = f[dataset_name]
-            return torch.from_numpy(dataset[local_idx, self.layer_idx])
+            return torch.from_numpy(dataset[local_idx])
 
 def get_dataloaders(data_path, layer_idx, world_size, rank, batch_size=1):
     dataloaders = []
-    for data_name in ['train', 'eval']:
+    for data_name in ['train', 'train']:
         dataset = HDF5Dataset(data_path, data_name, layer_idx)
-        
         if world_size > 1:
             sampler = torch.utils.data.distributed.DistributedSampler(dataset)
         else:
             sampler = None
-        
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
@@ -158,7 +152,6 @@ def get_dataloaders(data_path, layer_idx, world_size, rank, batch_size=1):
             pin_memory=True
         )
         dataloaders.append(dataloader)
-    
     return dataloaders[0], dataloaders[1]
 
 
@@ -386,7 +379,7 @@ def launch_training(args):
     # Get data
     train_dataloader, eval_dataloader = get_dataloaders(
         data_path=DATA_PATH, # TODO: override with your data path
-        layer_idx=0, world_size=world_size, rank=rank, batch_size=1
+        layer_idx=0, world_size=world_size, rank=rank, batch_size=32
     )
     if not args.enable_fsdp or rank == 0:
         print(f"--> Training   Set Length = {len(train_dataloader.dataset)}")
@@ -457,7 +450,6 @@ def execute_config(args):
 
 def main():
     import copy 
-
     args = get_args()
     layers = 32 # add checks for other models.
     num_gpus_per_job = 1

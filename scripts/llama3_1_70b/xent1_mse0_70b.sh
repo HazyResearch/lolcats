@@ -12,4 +12,3 @@ torchrun --nnodes 1 --nproc_per_node 8 /home/simarora/code/lolcats/llama_recipes
     --eval_steps 100 --dataset_chunk_size 512 \
     --enable_fsdp --low_cpu_fsdp 
 
-    
