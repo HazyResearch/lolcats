@@ -3,7 +3,7 @@
 #SBATCH --account=root
 #SBATCH --partition=batch
 #SBATCH --nodes=3
-#SBATCH --nodelist=mk-xii-22,mk-xii-24,mk-xii-03
+#SBATCH --nodelist=mk-xii-22,mk-xii-24,mk-xii-08
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=19
 #SBATCH --time=2000:00:00
@@ -28,6 +28,7 @@ export MASTER_ADDR=$(host $MASTER_HOSTNAME | awk '/has address/ { print $4 }')
 export MASTER_PORT=29500
 export PYTHONPATH=/home/simarora/code/lolcats/
 
+# Save the model outputs
 # srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/save_llama_attn_inputs.py \
 # --model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
 # --distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
@@ -35,6 +36,7 @@ export PYTHONPATH=/home/simarora/code/lolcats/
 # --verbose --replicate 0 --seed 0 \
 # --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing 
 
+# Save the model shards: 14 chunks of 9 layers
 srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/distill_llama_mini.py \
 --model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
 --distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
@@ -42,4 +44,6 @@ srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_bac
 --verbose --replicate 0 --seed 0 \
 --layer_idx 0 --layers_per_model 9 --device 0 \
 --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing 
+
+# Launch distillation !
 
