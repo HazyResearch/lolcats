@@ -20,7 +20,7 @@ dataloader:
 
 optimizer:
   optim: adamw_torch_fused
-  lr: 1e-5
+  lr: 1e-4
   weight_decay: 0.0
 
 lr_scheduler:
@@ -31,9 +31,9 @@ lr_scheduler:
   min_lr: 0.000001
 
 trainer: # HuggingFace Trainer-like arguments
-  name: mini_finetune_xent_mse
+  name: mini_finetune_xent_mse_mem_save
   mse_factor: 1000
-  xent_factor: 1
+  xent_factor: 0
   
   bf16: true
   train_split: train

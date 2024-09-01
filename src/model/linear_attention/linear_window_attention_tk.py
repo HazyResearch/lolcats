@@ -19,6 +19,10 @@ from .linear_attention import (
     LolcatsLinearAttention, LinearAttentionState, softmax_attention
 )
 
+from flash_attn import (
+    flash_attn_func,
+)
+
 # ----------------------
 # Sliding window helpers
 # ----------------------
@@ -75,14 +79,15 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
     # 3. Combine
     a = ((a_sm + a_ln) / (sum_sm + sum_ln)).to(q.dtype)  # Save attention weights
     y = torch.einsum('bhmn,bhnd->bhmd', a_sm + a_ln, v.float())
+
+    # print(f"pre: {y[0,0,0,:4]=}")
     if kv_state is not None:  # Combine with prior kv_state and k_state
         y += linear_factor * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float())
         sum_ln += linear_factor * torch.einsum(
             'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
     y = (y / (sum_sm + sum_ln)).to(q.dtype)
 
-    # print(f"1. {y.shape=}, {a.shape=}")
-    # y.shape=torch.Size([1, 32, 1024, 128]), a.shape=torch.Size([1, 32, 1024, 1024])
+    # print(f"{y[0,0,0,:4]=}")
     return y, a  # attention weights only for the last chunk
 
 
@@ -99,6 +104,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                  affine_attention_factors: bool = False,
                  init_window_factor: float = 0,
                  state_grad_enabled: bool = False,
+                 mem_save: bool = False,
                  **kwargs):
 
         self.window_size = window_size
@@ -119,6 +125,8 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         # Whether we use original flash attention 2 inference (use during attention transfer)
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
+        self.mem_save=mem_save
+        print(f"{self.mem_save=}")
         
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -142,22 +150,37 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         if self.train_attention:
             # 1. Compute "ground-truth" attention output and weights
             with torch.no_grad():
-                _y_true, a_true = softmax_attention(q, k, v)[:2]
-                y_true = _y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
-                y_true = self.o_proj(y_true)
+
+                if self.mem_save:
+                    q_true = q.transpose(1,2)
+                    k_true = k.transpose(1,2)
+                    v_true = v.transpose(1,2)
+                    with torch.no_grad():
+                        _y_true = flash_attn_func(
+                            q_true, k_true, v_true,
+                            0.0, 
+                            causal=True,
+                        ).transpose(1,2)
+                        y_true = _y_true.reshape(b, l, -1).contiguous()
+                        y_true = self.o_proj(y_true)
+                else:
+                    _y_true, a_true = softmax_attention(q, k, v)[:2]
+                    y_true = _y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
+                    y_true = self.o_proj(y_true)
+                # print(f"{_y_true[0,0,0,:4]=}")
 
             # 2. Compute "predicted" attention outputs
             # compute attn weights under sliding window
             window_factors = F.sigmoid(self.window_factors)
             linear_factors = 1 - window_factors if self.affine_attention_factors else 1
-            # print(f"{q.dtype=}; {k.dtype=}; {v.dtype=}; {f_q.dtype=}; {f_k.dtype=}")
             y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
                                                       window_factors, linear_factors,
                                                       window_size=self.window_size)
-            # print(f"2. {y_pred.shape=}; {_y_true.shape=}")
-            # y_pred.shape=torch.Size([1, 32, 1024, 128]); _y_true.shape=torch.Size([1, 32, 1024, 128])
 
-            attn_weights = ((a_pred, a_true), (y_pred, _y_true))
+            if self.mem_save:
+                attn_weights = ((None, None), (y_pred, _y_true))
+            else:
+                attn_weights = ((a_pred, a_true), (y_pred, _y_true))
         else:
             attn_weights = None
             # attention_mask = None  # For now this is always True

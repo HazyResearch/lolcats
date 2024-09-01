@@ -1,4 +1,9 @@
-""" This file just needs to save out the shards for 405B. """
+""" 
+This file just needs to save out the shards for 405B. 
+
+Notes:
+- Make sure that register_buffer inv_freq persistent=True for your modelling_llama.py 
+"""
 
 from typing import Optional, Tuple
 import sys
@@ -270,6 +275,8 @@ def main():
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = int(os.environ["RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
+    else:
+        rank = 0
     
     if torch.distributed.is_initialized():
         if is_xpu_available():
@@ -375,22 +382,26 @@ def main():
         print(mini_llama)
         print(f"Initialized mini llama.")
         print(model)
-        print(model.state_dict.keys())
-        print(f"Done with the keys\n\n")
+        print(model.state_dict().keys())
+        # print(f"Done with the keys\n\n")
     
     with torch.no_grad():
         first = 0
-        for layer_idx, layer in enumerate(tqdm(traverse_layers(model), desc=f'Saving layer attentions to {checkpoint_dir}...')):
+        for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
+            print(f'Saving layer attentions to {checkpoint_dir}...')
             
             pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
+            pretrained_fname = pretrained_fname.replace("_data_ephemeral_rahul_models_Meta-Llama-3.1-405B", "_scratch_rahul_models_Meta-Llama-3.1-405B")
             print(pretrained_fname)
             if layer_idx == 0 and rank == 0: 
                 print(layer.state_dict().keys())
 
             mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict())
+            
             if (layer_idx + 1) % args.layers_per_model == 0:
 
-                if rank == 0: print(f"{layer_idx=}")
+                if rank == 0: 
+                    print(f"{layer_idx=}")
 
                 pretrained_fname = (
                     join(checkpoint_dir, pretrained_fname) + 
@@ -401,7 +412,7 @@ def main():
                     torch.save(mini_llama.state_dict(), pretrained_fname)
                     print(f"Saved to: {pretrained_fname}!")
 
-                first = layer_idx
+                first = layer_idx + 1
                 del mini_llama
                 if rank == 0: print(f"Deleting and making a new one.")
                 with torch.device('meta'):
