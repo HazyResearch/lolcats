@@ -55,7 +55,7 @@ def remove_base_attention(llama_model: nn.Module):
 def traverse_layers(model: nn.Module, verbose: bool = False):
     """
     Return list of model layers
-    """
+    """ 
     try:
         layers = model.model.layers
         if verbose:

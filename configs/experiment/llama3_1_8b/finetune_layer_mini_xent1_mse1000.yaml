@@ -7,9 +7,8 @@ dataset:
     concat_data: true
     cache_dir: "data/alpaca"
   pretrained_model_config:
-    pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
-    pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
-    cache_dir: null
+    pretrained_model_name_or_path: "mistralai/Mistral-7B-v0.1" # will be updated based on model_config
+    cache_dir: "/data_persistent2/sim_data/"
   preprocess_config: null
 
 dataloader:
@@ -20,7 +19,7 @@ dataloader:
 
 optimizer:
   optim: adamw_torch_fused
-  lr: 1e-5
+  lr: 1e-4
   weight_decay: 0.0
 
 lr_scheduler:
@@ -28,10 +27,13 @@ lr_scheduler:
   mode: min
   factor: 0.1
   patience: 10
-  min_lr: 0.000001
+  min_lr: 0.00001
 
 trainer: # HuggingFace Trainer-like arguments
-  name: default_lm
+  name: mini_finetune_xent_mse
+  mse_factor: 1000
+  xent_factor: 1
+  
   bf16: true
   train_split: train
   val_split: validation
@@ -53,13 +55,5 @@ finetune:
   kwargs:
     r: 8
     lora_alpha: 16 # 32
-    lora_dropout: 0.05
-    target_modules: ["q_proj", "v_proj"] #, "k_proj",  "o_proj"]
-
-fsdp:
-  save_model: true 
-  run_validation: true
-  use_fp16: false
-  save_optimizer: false
-  gradient_clipping: true  # false
-  gradient_clipping_threshold: 1.0
+    lora_dropout: 0 # 0.05
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]

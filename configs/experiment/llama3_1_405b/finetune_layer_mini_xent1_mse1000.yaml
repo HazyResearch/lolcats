@@ -31,7 +31,10 @@ lr_scheduler:
   min_lr: 0.000001
 
 trainer: # HuggingFace Trainer-like arguments
-  name: default_lm
+  name: mini_finetune_xent_mse
+  mse_factor: 1000
+  xent_factor: 1
+  
   bf16: true
   train_split: train
   val_split: validation
@@ -56,10 +59,4 @@ finetune:
     lora_dropout: 0.05
     target_modules: ["q_proj", "v_proj"] #, "k_proj",  "o_proj"]
 
-fsdp:
-  save_model: true 
-  run_validation: true
-  use_fp16: false
-  save_optimizer: false
-  gradient_clipping: true  # false
-  gradient_clipping_threshold: 1.0
+

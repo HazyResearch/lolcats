@@ -94,6 +94,8 @@ def get_args():
     parser.add_argument("--finetune_config", type=str, default=None)
     parser.add_argument("--eval_config", type=str, default=None)
 
+    parser.add_argument("--layers_per_model", type=int, default=None)
+
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
     parser.add_argument("--load_distill_checkpoint", type=str, default=None)
     parser.add_argument("--load_finetune_checkpoint", type=str, default=None)
@@ -206,7 +208,8 @@ def setup_wandb(train_config, fsdp_config, run_name = None, **kwargs):
     return run
 
 
-def get_dataloaders(train_config, tokenizer):
+
+def get_dataloaders(train_config, tokenizer, no_shuffle_train: bool = False):
     """Return tuple of train_loader, eval_loader, updated train_config"""
     dataloaders  = load_data(train_config.dataset, train_config.dataloader)
     train_loader = dataloaders[train_config.trainer.train_split]
@@ -226,7 +229,8 @@ def get_dataloaders(train_config, tokenizer):
     train_config.batch_size_training = train_config.dataloader.batch_size
     train_config.val_batch_size = train_config.dataloader.batch_size
     
-    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer, "train")
+    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer,   # shuffle=mode=="train",
+                                            "train_no_shuffle" if no_shuffle_train else "train")  # hacky patch
     val_dl_kwargs = get_dataloader_kwargs(train_config, dataset_eval, tokenizer, "val")
     # val_dl_kwargs['collate_fn'] = eval_loader.collate_fn
 
@@ -244,7 +248,7 @@ def get_dataloaders(train_config, tokenizer):
         **val_dl_kwargs,
     )
     return train_loader, eval_loader, train_config
-
+    
 
 def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
     """

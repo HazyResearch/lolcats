@@ -56,6 +56,10 @@ from torch.distributed.elastic import rendezvous
 from collections import defaultdict
 from tqdm import tqdm
 
+import h5py 
+import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 # Increase timeout
 os.environ['TORCHELASTIC_MAX_WAIT_TIME'] = '600'  # 10 minutes
@@ -275,28 +279,7 @@ def main():
         input_keys = {'input_ids'}  # , 'attention_mask'} (assume packing / no padding)
         inputs = {k: v.to(model.device) for k, v in data.items() if k in input_keys}  
         outputs = model(**inputs, output_hidden_states=True, output_attentions=False, use_cache=False) 
-        # outputs = outputs.get('logits')[..., :-1, :].contiguous()
-        # targets = data.get('labels')[..., 1:].contiguous().detach().cpu()
         return outputs.hidden_states
-
-    def gather_layer2dataset(layer2dataset, world_size, rank):
-        gathered_layer2dataset = {}
-        for layer, data_list in layer2dataset.items():
-            gathered_data_list = []
-            for data in data_list:
-                gathered_tensors = [torch.zeros_like(data, device='cuda') for _ in range(world_size)] 
-                dist.barrier()
-                dist.all_gather(gathered_tensors, data.to(device='cuda'))
-                dist.barrier()
-                gathered_data_list.extend([tensor.cpu().detach() for tensor in gathered_tensors])
-            if rank == 0:
-                gathered_layer2dataset[layer] = gathered_data_list
-        return gathered_layer2dataset
-
-    import h5py 
-    import numpy as np
-    from concurrent.futures import ThreadPoolExecutor
-    import multiprocessing
 
     def calculate_chunk_size(sample_shape, num_layers):
         element_size = 4  # Assuming float32
@@ -305,9 +288,9 @@ def main():
         max_samples_per_chunk = max_chunk_size // (elements_per_sample * element_size)
         return max(1, min(1000, max_samples_per_chunk))  # Ensure at least 1 sample per chunk
 
-    def save_chunk_to_hdf5(file_path, chunk_data, chunk_start):
+    def save_chunk_to_hdf5(file_path, dataset_name, chunk_data, chunk_start):
         with h5py.File(file_path, 'a') as f:
-            dataset = f['hidden_states']
+            dataset = f[dataset_name]
             chunk_end = chunk_start + len(chunk_data)
             dataset[chunk_start:chunk_end] = chunk_data
 
@@ -325,9 +308,9 @@ def main():
                 chunk_size = min(dataset_samples, chunk_size)
 
                 f.create_dataset(f'hidden_states_{dataset_idx}', 
-                                    shape=(dataset_samples, num_layers, *sample_shape),
+                                    shape=(dataset_samples, *sample_shape),
                                     dtype=np.float32,
-                                    chunks=(chunk_size, num_layers, *sample_shape),
+                                    chunks=(chunk_size, *sample_shape),
                                     compression='gzip',
                                     compression_opts=1)
 
@@ -338,36 +321,35 @@ def main():
 
                 for chunk_start in range(start_sample, end_sample, chunk_size):
                     chunk_end = min(chunk_start + chunk_size, end_sample)
-                    chunk_data = np.zeros((chunk_end - chunk_start, num_layers, *sample_shape), dtype=np.float32)
+                    chunk_data = np.zeros((chunk_end - chunk_start, *sample_shape), dtype=np.float32)
                     for layer_idx, hidden_states in layer2dataset.items():
-                        chunk_data[:, layer_idx] = [state.float().cpu().numpy() for state in hidden_states[chunk_start:chunk_end]]
+                        chunk_data = [state.float().cpu().numpy() for state in hidden_states[chunk_start:chunk_end]]
                     executor.submit(save_chunk_to_hdf5, save_path, f'hidden_states_{dataset_idx}', chunk_data, chunk_start - start_sample)
 
-
     def gather_and_save(layer2dataset, world_size, rank, step, data_name, model_name, seqlen, save_dir):
-        layer2dataset_collect = gather_layer2dataset(layer2dataset, world_size, rank)
-        if rank == 0:
-            combined_layer2dataset = defaultdict(list)
-            for layer_idx, hidden_states in layer2dataset_collect.items():
-                combined_layer2dataset[layer_idx].extend(hidden_states)
-            print(f"Rank {rank}; Num layers: {len(combined_layer2dataset)}; Dataset size: {len(combined_layer2dataset[0])}")
+        print(f"Rank {rank}; Num layers: {len(layer2dataset)}; Dataset size: {len(layer2dataset[0])}")
+        for layer_idx, hidden_states in layer2dataset.items():
+            dic = {layer_idx: hidden_states}
+            os.makedirs(save_dir, exist_ok=True) 
+            save_path = os.path.join(save_dir, f"layer{layer_idx}")
+            os.makedirs(save_path, exist_ok=True)
+            save_path = os.path.join(save_path, f"{model_name}-{rank}-{data_name}_seqlen{seqlen}-step{step}.h5")
+            save_to_hdf5(dic, save_path)
+            print(f"Rank {rank} saved {data_name} dataset to {save_path}")
 
-            os.makedirs(save_dir, exist_ok=True)
-            save_path = os.path.join(save_dir, f"{model_name}-{data_name}_seqlen{seqlen}-step{step}.h5")
-            save_to_hdf5(combined_layer2dataset, save_path)
-            print(f"Saved synchronized {data_name} dataset to {save_path}")
 
+    save_dir="/data_ephemeral/sim/saved_output_check/"
+    layer_interval = 9
     layer2dataset = defaultdict(list)
-    save_dir="/data_ephemeral/sim/saved_output"
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
     seqlen = distill_config.dataset['dataset_config']['chunk_size']
-    if "8b" in model_name.lower(): interval = 100 
-    elif "70b" in model_name.lower(): interval = 50
-    else:
-        assert 0, print("Unknown model.")
+    if "8b" in model_name.lower(): interval = 200
+    elif "70b" in model_name.lower(): interval = 200
+    elif "405b" in model_name.lower(): interval = 200
+    else: assert 0, print("Unknown model.")
 
-    for data_name, dataloader in [('train', train_dataloader), ('eval', eval_dataloader)]:
-        layer2dataset_so_far = []
+    for data_name, dataloader in [('train', train_dataloader)]: # ('eval', eval_dataloader), 
+        layer2dataset_so_far = [] 
         pbar = tqdm(dataloader,colour="green", desc=f"Rank {rank}", dynamic_ncols=True)
         for step, batch in enumerate(pbar):
             for key in batch.keys():
@@ -379,19 +361,21 @@ def main():
                     else:
                         batch[key] = batch[key].to('cuda:0')
             # Ensure no gradients are computed for this scope to save memory
+            
             with torch.no_grad():
                 outputs = get_outputs(model, batch, rank=rank, local_rank=local_rank)
                 for idx, hidden_state in enumerate(outputs[:-1]):  
-                    hidden_state = model.model.layers[idx].input_layernorm(hidden_state).cpu()
-                    layer2dataset[idx].append(hidden_state)
+                    if idx % layer_interval == 0:
+                        hidden_state = model.model.layers[idx].input_layernorm(hidden_state).cpu()
+                        layer2dataset[idx].append(hidden_state)
+
             pbar.set_description(f"Rank {rank}; Dataset size: {len(layer2dataset[0])}")
             
             # do it in chunks to shift stuff to the CPU
             if step > 0 and (step % interval == 0 or step == len(pbar) - 1): 
                 if rank == 0: 
-                    print(f"Synchronizing at {step=}.")
+                    print(f"Saving at step {step=}.")
                 gather_and_save(layer2dataset, world_size, rank, step, data_name, model_name, seqlen, save_dir)
-                dist.barrier()
                 layer2dataset.clear()
                 torch.cuda.empty_cache()
 
