@@ -15,7 +15,7 @@ from datetime import datetime
 from pkg_resources import packaging
 import yaml
 
-print(f"{os.environ['WORLD_SIZE']=}")
+# print(f"{os.environ['WORLD_SIZE']=}")
 
 import torch
 import torch.nn as nn

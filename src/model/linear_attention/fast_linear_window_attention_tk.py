@@ -21,11 +21,6 @@ from .linear_attention import (
 
 from flash_attn.utils.distributed import get_dim_for_local_rank
 from flash_attn import (
-    flash_attn_kvpacked_func,
-    flash_attn_qkvpacked_func,
-    flash_attn_varlen_kvpacked_func,
-    flash_attn_varlen_qkvpacked_func,
-    flash_attn_with_kvcache,
     flash_attn_func,
 )
 import inspect
@@ -44,9 +39,6 @@ try:
                                  fused_recurrent_linear_attn)
 except:
     print(f"Could not import the FLA triton kernels... ")
-from fla.modules import FusedRMSNormSwishGate, RMSNorm
-from fla.modules import FusedRMSNormSwishGate, RMSNorm, ShortConvolution
-from fla.modules.activations import ACT2FN
 
 
 def hybrid_attention(

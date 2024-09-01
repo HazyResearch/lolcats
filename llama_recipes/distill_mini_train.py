@@ -181,7 +181,6 @@ def load_data(data_dir: str, layer_idx: int, max_layer: int = 32,
             # Filter and load naïvely 
             if f'-l={layer_idx:0{max_layer_digits}d}-s={split}' in f:
                 sample_tensors.append(torch.load(join(data_dir, f)))
-                break
         samples = torch.cat(sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
         _dataset = AttentionInputDataset(samples)
         _dataloader = DataLoader(_dataset, shuffle=True if split == 'train' else False,
@@ -362,6 +361,16 @@ def main():
     model_config = OmegaConf.load(model_config_path)
     model_config = update_model_config_from_args(model_config, args)
 
+    try:
+        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
+            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
+            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    except:
+        print(f"Model without model.pretrained_model_name_or_path_backup path")
+        pass
+ 
+
     # Get data directory for layer-wise input tensors
     dataset_name = distill_config.dataset.name
     cache_dir = "/data_ephemeral/sim/-scratch-rahul-models-Meta-Llama-3.1-405B/" # SA flag
@@ -447,32 +456,36 @@ def main():
         # If they already exist in ./checkpoints... then just load that
         teacher_mini_llama = LlamaMiniModelForCausalLM(mini_config).to(torch.bfloat16)
     teacher_mini_llama = teacher_mini_llama.to_empty(device='cpu')
+    print("Got teacher template, now loading the weights.")
 
     # Come back to this.
     with torch.no_grad():
         pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
         pretrained_fname = join(checkpoint_dir, pretrained_fname) + f'-{name_suffix}.pt'
+        
+        # custom adjustments
+        pretrained_fname = pretrained_fname.replace("_data_ephemeral_rahul_models_Meta-Llama-3.1-405B", "_scratch_rahul_models_Meta-Llama-3.1-405B")
+        pretrained_fname = pretrained_fname.replace("distill_llama405b_lk_smd_wtk64_fd64_w01_mem_save", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
+
         ckpt = torch.load(pretrained_fname, map_location='cpu')
-        breakpoint()
         teacher_mini_llama.load_state_dict(ckpt, assign=True)
         print_header('All teacher weights loaded successfully')
     for p in teacher_mini_llama.parameters():   # Freeze all layers
         p.requires_grad = False
 
-    breakpoint()
     student_mini_llama = copy.deepcopy(teacher_mini_llama)
     student_mini_llama = load_and_convert_attns(student_mini_llama, model_config,
                                                 attention_type=None, # specified in model_config,
                                                 checkpoint_path=None,
                                                 print_model=args.verbose,
                                                 train_attention=True)[0]
+
+    
     print(f'-> Loaded pretrained attention from {pretrained_fname}!')
 
     device = torch.device(f'cuda:{args.device}')
     student_mini_llama = student_mini_llama.to(device, dtype=dtype)
-    student_mini_llama.to(device)  # hack
-    # teacher_mini_llama = teacher_mini_llama.to(device, dtype=dtype)
-    # teacher_mini_llama.to(device)  # hack
+    student_mini_llama.to(device) 
 
     if args.verbose:
         print_header(f'*** Initial Layer {args.layer_idx} ***')
@@ -546,13 +559,42 @@ def main():
             student_mini_llama.load_state_dict(
                 torch.load(args.load_distill_checkpoint)['model_state_dict'], strict=False,)
 
+
     # Prepare for 2nd stage finetune
-    student_mini_llama = toggle_attention(student_mini_llama, train=False)
+    # mini_llama = toggle_attention(mini_llama, train=False)  # keep this
     student_mini_llama = remove_base_attention(student_mini_llama)
+
+    # No xent calcs in the second stage for mem savings.
+    def toggle_mem_save(model, mem_save: bool = False):
+        for layer in traverse_layers(model):
+            layer.self_attn.mem_save = mem_save
+        return model
+    toggle_mem_save(student_mini_llama, mem_save=True)
 
     # --------------------------
     # Stage 2: Low-rank Adapting
     # --------------------------
+
+    # Reset the wandb
+    wandb.finish() # End the first run
+
+    # WandB logging
+    args.run_name = f"ft-{args.run_name}"
+    print(f"\n\n", "***"*10, f"\n{args.run_name}\n", "***"*10, "\n")
+    wandb = init_wandb(args)
+    if wandb is not None:
+        distill_config['model'] = model_config  # Combine for logging
+        _flattened = {'model': model_config,
+                      'model_config': args.model_config,  # config file names
+                      'distill_config': args.distill_config,
+                      'finetune_config': args.finetune_config,
+                      'distill_checkpoint': args.load_distill_checkpoint,
+                      'finetune_checkpoint': args.load_finetune_checkpoint,
+                      'replicate': args.replicate}
+        flatten_config(OmegaConf.to_container(distill_config), _flattened, '')
+        wandb.config.update(_flattened)
+
+
     if args.max_finetune_steps is not None:
         args.max_steps = args.max_finetune_steps
 
@@ -567,12 +609,14 @@ def main():
         eval_loader  = dataloaders['validation']
     
     checkpoint_path = args.load_finetune_checkpoint
-    student_mini_llama, ft_peft_config = load_and_convert_finetune(student_mini_llama, finetune_config, 
-                                                                   checkpoint_path=checkpoint_path,  # could be None
-                                                                   print_model=False,  # args.verbose,
-                                                                   merge_loras=False,
-                                                                   peft_gradient_checkpointing=not args.no_peft_grad_ckpt,)
-    
+    student_mini_llama, ft_peft_config = load_and_convert_finetune(
+                                                           student_mini_llama, finetune_config, 
+                                                           checkpoint_path=checkpoint_path,  # could be None
+                                                           print_model=False,  # args.verbose,
+                                                           merge_loras=False,
+                                                           peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
+                                                        #    add_self_attn_prefix=False,
+                                                           )
     # Initialize optimizer and scheduler
     optimizer = get_optimizer(model=student_mini_llama, **finetune_config.optimizer)
     scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
@@ -588,18 +632,9 @@ def main():
                 count += 1
         if count == 0:  # no trainable parameters
             print('(none)')
-
-        # print_header(f'*** Teacher Layers {args.layer_idx} - {args.layer_idx + args.layers_per_model - 1} ***')
-        # print(teacher_mini_llama)
-        # assert teacher_attn.q_proj.weight == model_attn.q_proj.base_layer
     
     OurTrainer = get_trainer(finetune_config.trainer.name)
-    for p in teacher_mini_llama.parameters():
-        p.requires_grad = False
-
     finetune_trainer = OurTrainer(model=student_mini_llama, 
-                                  teacher_layer=teacher_mini_llama.to('cuda:1'),
-                                    #   student_mini_llama.device),
                                   layer_idx=args.layer_idx,
                                   args=args,
                                   train_loader=train_loader,
@@ -617,7 +652,7 @@ def main():
     print(f'├── Experiment name: {args.run_name}')
     print(f'├── Device: {args.device}')
     print(f'├── Seed: {args.seed}')
-    student_mini_llama = finetune_trainer.train()
+    mini_llama = finetune_trainer.train()
     args.load_finetune_checkpoint = finetune_trainer.best_val_checkpoint_path
 
     if ft_peft_config is not None and wandb is not None:
