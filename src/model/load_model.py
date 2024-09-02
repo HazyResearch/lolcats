@@ -130,6 +130,7 @@ def load_and_convert_finetune(model: nn.Module,
 
     # Load weights
     if checkpoint_path:
+        print(f"Loading weights from {checkpoint_path}")
         state_dict = torch.load(checkpoint_path)['model_state_dict']
         _keys = model.load_state_dict(state_dict, strict=False)
         try:
