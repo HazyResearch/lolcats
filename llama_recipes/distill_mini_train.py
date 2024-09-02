@@ -556,6 +556,7 @@ def main():
         student_mini_llama = trainer.train()
         args.load_distill_checkpoint = trainer.best_val_checkpoint_path  # saved here
     else:
+        print(f"Loding stage 1 model from path: {args.load_distill_checkpoint}\n\n")
         with torch.no_grad():
             student_mini_llama.load_state_dict(
                 torch.load(args.load_distill_checkpoint)['model_state_dict'], strict=False,)
@@ -610,6 +611,7 @@ def main():
         eval_loader  = dataloaders['validation']
     
     checkpoint_path = args.load_finetune_checkpoint
+    print(f"Passing to `load_and_convert_finetune': {checkpoint_path=}")
     student_mini_llama, ft_peft_config = load_and_convert_finetune(
                                                            student_mini_llama, finetune_config, 
                                                            checkpoint_path=checkpoint_path,  # could be None

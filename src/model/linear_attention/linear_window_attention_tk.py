@@ -152,22 +152,31 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             with torch.no_grad():
 
                 if self.mem_save:
-                    q_true = q.transpose(1,2)
+                    # q_true = q.transpose(1,2)
+                    # k_true = k.transpose(1,2)
+                    # v_true = v.transpose(1,2)
+                    # with torch.no_grad():
+                    #     _y_true = flash_attn_func(
+                    #         q_true, k_true, v_true,
+                    #         0.0, 
+                    #         causal=True,
+                    #     ).transpose(1,2)
+                    #     y_true = _y_true.reshape(b, l, -1).contiguous()
+                    #     y_true = self.o_proj(y_true)
+
+                    q_true = q.transpose(1,2) 
                     k_true = k.transpose(1,2)
                     v_true = v.transpose(1,2)
-                    with torch.no_grad():
-                        _y_true = flash_attn_func(
-                            q_true, k_true, v_true,
-                            0.0, 
-                            causal=True,
-                        ).transpose(1,2)
-                        y_true = _y_true.reshape(b, l, -1).contiguous()
-                        y_true = self.o_proj(y_true)
+                    _y_true = flash_attn_func(
+                        q_true, k_true, v_true,0.0, causal=True,
+                    ).transpose(1,2)
+                    y_true = _y_true.transpose(1,2).reshape(b, l, -1).contiguous()
+                    y_true = self.o_proj(y_true)
+
                 else:
                     _y_true, a_true = softmax_attention(q, k, v)[:2]
                     y_true = _y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
                     y_true = self.o_proj(y_true)
-                # print(f"{_y_true[0,0,0,:4]=}")
 
             # 2. Compute "predicted" attention outputs
             # compute attn weights under sliding window
@@ -241,8 +250,6 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             y_true = y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
             y_true = self.o_proj(y_true)
         
-        # print(f"3. {y_true.shape=}")
-        # y_true.shape=torch.Size([1, 1024, 4096])
         return y_true, attn_weights, past_key_value
 
 

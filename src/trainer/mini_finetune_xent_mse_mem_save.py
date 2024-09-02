@@ -7,10 +7,13 @@ import torch.nn as nn
 from .default_lm import OurTrainer as DefaultTrainer
 
 from src.model.convert_model import traverse_layers, toggle_attention
+from peft.tuners.lora.layer import LoraLayer
 
 def toggle_lora(model, use_lora: bool = True):
     for layer in traverse_layers(model):
-        layer.disable_adapters = not use_lora
+        for n, module in layer.self_attn.named_modules():
+            if isinstance(module, LoraLayer):
+                module._disable_adapters = not use_lora
     return model
 
 class OurTrainer(DefaultTrainer):
@@ -82,25 +85,35 @@ class OurTrainer(DefaultTrainer):
 
         loss_mse = 0
         loss_xent = 0
+        skip_xent_mem_save = False
         for layer_idx in range(len(a_pred)):  # indexed by n_layers
             if self.xent_factor > 0:
                 _a_pred, _a_true = a_pred[layer_idx], a_true[layer_idx]
+                if _a_pred is not None:
                 
-                # Cross-entropy loss
-                _a_pred = _a_pred.clamp(min=1e-12).log()  # nn.CrossEntropy assumes unnormalized logits
-                k_len = _a_true.shape[-1]  # batch, n_heads, q_len, k_len
-                
-                # Compute mean cross-entropy over all queries
-                _a_pred = _a_pred.contiguous().view(-1, k_len)
-                _a_true = _a_true.contiguous().view(-1, k_len)
-                loss_xent += self.criterion_xent(_a_pred, _a_true)
+                    # Cross-entropy loss
+                    _a_pred = _a_pred.clamp(min=1e-12).log()  # nn.CrossEntropy assumes unnormalized logits
+                    k_len = _a_true.shape[-1]  # batch, n_heads, q_len, k_len
+                    
+                    # Compute mean cross-entropy over all queries
+                    _a_pred = _a_pred.contiguous().view(-1, k_len)
+                    _a_true = _a_true.contiguous().view(-1, k_len)
+                    loss_xent += self.criterion_xent(_a_pred, _a_true)
+                else:
+                    skip_xent_mem_save = True
+            else:
+                skip_xent_mem_save = True
                 
             if self.mse_factor > 0:
                 loss_mse += self.criterion_mse(y_pred[layer_idx], y_true[layer_idx])
 
-        loss_xent = loss_xent * self.xent_factor / len(y_pred)
-        loss_mse = loss_mse * self.mse_factor / len(y_pred)
-        loss = loss_xent + loss_mse
+        loss_xent = loss_xent / len(y_pred) * self.xent_factor
+        loss_mse = loss_mse / len(y_pred) * self.mse_factor
+        
+        if skip_xent_mem_save:
+            loss = loss_mse
+        else:
+            loss = loss_xent + loss_mse
 
         outputs = {'loss_xent': loss_xent.item() if self.xent_factor > 0 else 0,
                    'loss_mse': loss_mse.item() if self.mse_factor > 0 else 0, 
