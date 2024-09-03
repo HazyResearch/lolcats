@@ -292,7 +292,7 @@ def main():
         wandb.config.update(_flattened)
 
     # 2. Finetune model further (if desired)
-    if (args.finetune_config is not None or 
+    if (args.finetune_config is not None or
         (args.load_finetune_checkpoint is not None and args.resume_finetune)):
         if not args.no_init_eval:
             print_header('*** Distilled Evaluation ***')

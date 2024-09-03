@@ -42,7 +42,7 @@ def seed_everything(seed: int) -> None:
 
 def get_run_name_from_checkpoint(checkpoint_path: str) -> str:
     """
-    Helper function to get a run name from the checkpoint path
+    Helper function to get a condensed run name from the checkpoint path
     """
     name = []
     for s in checkpoint_path.split('/')[-1].split('-'):

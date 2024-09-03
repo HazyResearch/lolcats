@@ -4,13 +4,18 @@ Custom trainer class for distilling attentions. Can substitute for HuggingFace t
 import torch
 import torch.nn as nn
 
+from peft.tuners.lora.layer import LoraLayer
+
 from .default_lm import OurTrainer as DefaultTrainer
 from src.model.convert_model import traverse_layers, toggle_attention
 
 
+
 def toggle_lora(model, use_lora: bool = True):
     for layer in traverse_layers(model):
-        layer.disable_adapters = not use_lora
+        for n, module in layer.self_attn.named_modules():
+            if isinstance(module, LoraLayer):
+                module._disable_adapters = not use_lora
     return model
 
 
@@ -75,6 +80,7 @@ class OurTrainer(DefaultTrainer):
         outputs = model(**inputs, output_attentions=True, use_cache=False).get('attentions')
         a_pred = [o[0][0] for o in outputs]
         y_pred = [o[1][0] for o in outputs]
+
         # y_pred = model(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
         # y_pred, a_pred = y_pred.get('hidden_states'), y_pred.get('attentions')
     

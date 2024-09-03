@@ -22,7 +22,7 @@ python distill_llama_mini.py \
 --layer_idx 8 --layers_per_model 8 --device 0 \
 --verbose --seed 0 --replicate 0
 
-(screen -r h5)
+
 python distill_llama_mini.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
@@ -31,6 +31,7 @@ python distill_llama_mini.py \
 --layer_idx 16 --layers_per_model 8 --device 0 \
 --verbose --seed 0 --replicate 0
 
+(screen -r h3)
 python distill_llama_mini.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
@@ -38,6 +39,16 @@ python distill_llama_mini.py \
 --lk_zero_init --lr 1e-3 \
 --layer_idx 24 --layers_per_model 8 --device 0 \
 --verbose --seed 0 --replicate 0
+
+
+python distill_llama_mini.py \
+--model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
+--distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
+--finetune_config finetune_lora_qkvo_alpaca_clean_mini_xent1_mse1000 \
+--lk_zero_init --lr 1e-3 \
+--layer_idx 0 --layers_per_model 8 --device 0 \
+--verbose --seed 0 --replicate 0 
+--layer_idx 16
 """
 from typing import Optional, Tuple, Union, List
 import sys
@@ -545,7 +556,7 @@ def main():
             setattr(args, _config, OmegaConf.to_container(getattr(distill_config, _config)))
             
         OurTrainer = get_trainer(distill_config.trainer.name)
-        trainer = OurTrainer(model=mini_llama, 
+        trainer = OurTrainer(model=mini_llama,
                              layer_idx=args.layer_idx,
                              args=args,
                              train_loader=train_loader,
@@ -567,7 +578,7 @@ def main():
         args.load_distill_checkpoint = trainer.best_val_checkpoint_path  # saved here
     else:
         with torch.no_grad():
-            student_mini_llama.load_state_dict(
+            mini_llama.load_state_dict(
                 torch.load(args.load_distill_checkpoint)['model_state_dict'], strict=False,)
 
     # Prepare for 2nd stage finetune
@@ -618,7 +629,7 @@ def main():
         # assert teacher_attn.q_proj.weight == model_attn.q_proj.base_layer
     
     OurTrainer = get_trainer(finetune_config.trainer.name)
-    finetune_trainer = OurTrainer(model=mini_llama, 
+    finetune_trainer = OurTrainer(model=mini_llama,
                                   layer_idx=args.layer_idx,
                                   args=args,
                                   train_loader=train_loader,
