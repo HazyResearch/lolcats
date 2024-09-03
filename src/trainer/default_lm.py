@@ -163,8 +163,11 @@ class OurTrainer():
             loss /= accum_iter
             if not self.compute_loss_backprop:
                 # loss.backward() did not occur in compute_loss
-                with torch.autograd.set_detect_anomaly(True):
-                    loss.backward()
+                try:
+                    with torch.autograd.set_detect_anomaly(True):
+                        loss.backward()
+                except Exception as e:
+                    breakpoint()
             if (self.step + 1) % accum_iter == 0:  # and self.step != 0:
                 self.optimizer.step()
                 if not self.scheduler_step_after_epoch and self.scheduler is not None:
