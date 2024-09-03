@@ -50,7 +50,7 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
     load_sharded_model_single_gpu,
 )
-from llama_recipes.trainer_finetune_chunked import train as train_chunked
+# from llama_recipes.trainer_finetune_chunked import train as train_chunked
 
 from accelerate.utils import is_xpu_available
 
@@ -91,10 +91,11 @@ def main():
 
     kwargs = vars(args)
 
-    if 'finetune_long' in args.finetune_config:
-        train = train_chunked
-    else:
-        train = _train_normal
+    # if 'finetune_long' in args.finetune_config:
+    #     train = train_chunked
+    # else:
+    #     train = _train_normal
+    train = _train_normal
 
     # Load distillation + attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
@@ -337,7 +338,7 @@ def main():
                     print(f'-> {n}:\n', p)
     
             
-    elif not model_config.model.quantization and not args.enable_fsdp:
+    else:  # if not model_config.model.quantization and not args.enable_fsdp:
         if is_xpu_available():
             model.to("xpu:0")
         elif torch.cuda.is_available():

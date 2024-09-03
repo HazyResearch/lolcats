@@ -8,11 +8,15 @@ os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
 import argparse
 import torch
+import numpy as np
+import pandas as pd
 
 # from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
 from src.model.load_model_for_eval import load_model_from_checkpoint, load_model_from_config
 
 LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
+
+RESULTS_PATH = '/scr-ssd/mzhang/projects/lolcats/lm_eval_harness/results_lm_eval.csv'
 
 
 OPEN_LLM = [  # task, shots
@@ -87,11 +91,70 @@ def init_wandb(args):
     return wandb
 
 
+def create_new_save_dict(results_path):
+    # Save locally
+    if not os.path.isfile(results_path):
+        results_dict = {
+            'task': [],
+            'shots': [],
+            'acc': [],
+            'acc_norm': [],
+            'acc_stderr': [],
+            'acc_norm_stderr': [],
+            'attn_mlp_path': [],
+            'finetune_path': [],
+        }
+        print(f'Creating new results dict at {results_path}')
+        pd.DataFrame(results_dict).to_csv(results_path, index=False)
+    results_dict = pd.read_csv(results_path).to_dict(orient='list')
+    return results_dict
+
+def save_results_to_dict(results, results_dict, results_path, args):
+    # Save results locally
+    # results are lm_eval results
+    results_dict['task'].append(args.task)
+    results_dict['shots'].append(args.num_shots)
+    if args.task in ['mmlu', 'hendrycksTest']:
+        try:
+            acc = sum(mmlu_accs) / len(mmlu_accs)
+            acc_stderr = np.std(mmlu_acc)   # stdev over samples
+        except:
+            acc = 0
+        acc_norm = 0
+        acc_norm_stderr = 0
+    else:
+        acc = results['results'][args.task]['acc']
+        acc_stderr = results['results'][args.task]['acc_stderr'] 
+        try:
+            acc_norm = results['results'][args.task]['acc_norm']
+            acc_norm_stderr = results['results'][args.task]['acc_norm_stderr']
+        except:
+            acc_norm = 0
+            acc_norm_stderr = 0
+    results_dict['acc'].append(acc)
+    results_dict['acc_stderr'].append(acc_stderr)
+    results_dict['acc_norm'].append(acc_norm)
+    results_dict['acc_norm_stderr'].append(acc_norm_stderr)
+    results_dict['attn_mlp_path'].append(args.attn_mlp_checkpoint_path)
+    results_dict['finetune_path'].append(args.finetune_checkpoint_path)
+    pd.DataFrame(results_dict).to_csv(results_path, index=False)
+
+
 def main():
     sys.path.append(LM_EVALUATION_HARNESS_PATH)
     from lm_eval import evaluator
     
     args = get_args()
+    # Save locally
+    results_dict = create_new_save_dict(RESULTS_PATH)
+    if 'dl-d=drxmldl8lswfwflqr000_lzi=1_distill_' in args.finetune_checkpoint_path:
+        finetune_flag = args.finetune_checkpoint_path.split('dl-d=drxmldl8lswfwflqr000_lzi=1_distill_')[-1].split('-')[0]
+        _RESULTS_PATH = RESULTS_PATH.replace('.csv', f'-{finetune_flag}.csv')
+        _results_dict = create_new_save_dict(_RESULTS_PATH)
+    else:
+        _RESULTS_PATH = None
+        _results_dict = None
+    
     if args.model_type == 'lolcats_ckpt':  # load hedgehog model
         model, model_config, tokenizer = load_model_from_checkpoint(
             attn_mlp_checkpoint_path=args.attn_mlp_checkpoint_path,
@@ -141,7 +204,7 @@ def main():
             'max_batch_size': args.max_batch_size,
         })
 
-    if args.task in ['mmlu', 'mmlu_alpaca_v2', 'hendrycks_test']:
+    if args.task in ['mmlu', 'mmlu_alpaca_v2', 'hendrycksTest']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:
@@ -164,7 +227,7 @@ def main():
         output_base_path=None,  # args.output_base_path,
     )
 
-    if args.task in ['mmlu', 'hendyricks_test']:
+    if args.task in ['mmlu', 'hendrycksTest']:
         mmlu_accs = []
         for k, v in results['results'].items():
             if args.task in k:
@@ -178,6 +241,10 @@ def main():
             
     if wandb is not None:
         wandb.log(results)
+
+    save_results_to_dict(results, results_dict, RESULTS_PATH, args)
+    if _results_dict is not None:
+        save_results_to_dict(results, _results_dict, _RESULTS_PATH, args)
 
 
 if __name__ == '__main__':
