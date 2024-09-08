@@ -20,7 +20,7 @@ def get_pretrained_loader(pretrained_model_name_or_path: str,
     Return the appropriate loader for the pretrained model
     """
 
-    if 'lama' in pretrained_model_name_or_path:  # Llama or llama
+    if 'lama' in pretrained_model_name_or_path or 'ref_70' in pretrained_model_name_or_path:  # Llama or llama
         return PretrainedLlamaLoader(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             huggingface_token=huggingface_token,
