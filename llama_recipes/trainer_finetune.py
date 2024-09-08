@@ -125,8 +125,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     end = False
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
-        # print('-> epoch:', epoch)
-        # if True:
         with MemoryTrace() as memtrace:  # track the memory usage
             model.train()
             print(f'-> Model is training on rank {rank}')
@@ -134,7 +132,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             total_length = len(train_dataloader)//gradient_accumulation_steps
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
-                if step >= total_length: break # SA added for RP data
+
+                # if step >= total_length: break # SA added for RP data !!!!!
 
                 model.train()
                 # print('-> step:', step)
@@ -209,7 +208,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                     break  # Early exit for debugging later logic
 
                 if (train_config.run_validation and (
-                    (total_step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  #  or step == len(train_dataloader) - 1)):
+                    (total_step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  
                     dist.barrier()
                     eval_outputs = eval_loop(model, evaluate_lm, optimizer, lr_scheduler,
                                              train_config, fsdp_config, rank, eval_dataloader,
@@ -289,6 +288,11 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
     Returns: eval_epoch_loss
     """
+    for n, p in model.named_parameters():
+        if ('layers.0.' in n and 'base_attn' not in n and 
+            '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+            print(f'-> {n}:\n', p)
+
     loss_computer = LossComputer(**train_config.trainer)
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"])

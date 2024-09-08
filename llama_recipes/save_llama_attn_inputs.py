@@ -304,7 +304,7 @@ def main():
     # -----------------------------------
     layer_interval = args.layers_per_model 
     assert layer_interval > 0, print("Need to pass in args.layers_per_model")
-    save_dir = f"/data_ephemeral/sim/{model_name}"
+    save_dir = f"/scratch/sim/{model_name}"
     os.makedirs(save_dir, exist_ok=True) 
 
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
@@ -341,7 +341,8 @@ def main():
                 if args.enable_fsdp:
                     dist.barrier()
 
-                if (step + 1) % CUTOFF_BATCH == 0:
+                # torch.distributed.barrier()
+                if (step + 1) % CUTOFF_BATCH == 0:  # Flag
                     # Save layer-wise outputs to disk
                     for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
                         if layer_idx % layer_interval == 0:

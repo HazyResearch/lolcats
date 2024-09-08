@@ -231,7 +231,8 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    checkpoint_dir = "/data_ephemeral/sim/sharded_layers_405b/"
+    # checkpoint_dir = "/data_ephemeral/sim/sharded_layers_405b/"
+    checkpoint_dir = "/data_ephemeral/sim/sharded_layers_70b/"
 
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])

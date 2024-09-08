@@ -79,15 +79,11 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
     # 3. Combine
     a = ((a_sm + a_ln) / (sum_sm + sum_ln)).to(q.dtype)  # Save attention weights
     y = torch.einsum('bhmn,bhnd->bhmd', a_sm + a_ln, v.float())
-
-    # print(f"pre: {y[0,0,0,:4]=}")
     if kv_state is not None:  # Combine with prior kv_state and k_state
         y += linear_factor * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float())
         sum_ln += linear_factor * torch.einsum(
             'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
     y = (y / (sum_sm + sum_ln)).to(q.dtype)
-
-    # print(f"{y[0,0,0,:4]=}")
     return y, a  # attention weights only for the last chunk
 
 
@@ -152,18 +148,6 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
             with torch.no_grad():
 
                 if self.mem_save:
-                    # q_true = q.transpose(1,2)
-                    # k_true = k.transpose(1,2)
-                    # v_true = v.transpose(1,2)
-                    # with torch.no_grad():
-                    #     _y_true = flash_attn_func(
-                    #         q_true, k_true, v_true,
-                    #         0.0, 
-                    #         causal=True,
-                    #     ).transpose(1,2)
-                    #     y_true = _y_true.reshape(b, l, -1).contiguous()
-                    #     y_true = self.o_proj(y_true)
-
                     q_true = q.transpose(1,2) 
                     k_true = k.transpose(1,2)
                     v_true = v.transpose(1,2)
@@ -211,7 +195,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
 
                     # Sliding window + linear attention decode
                     window_factors = F.sigmoid(self.window_factors)
-                    linear_factors = 1 - window_factors if self.affine_attention_factors else 1
+                    linear_factors = 1
 
                     # Softmax attention terms
                     a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k_cache.float()) * (k.shape[-1] ** -0.5)

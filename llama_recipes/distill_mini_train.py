@@ -177,11 +177,15 @@ def load_data(data_dir: str, layer_idx: int, max_layer: int = 32,
     dataloaders = {'train': None, 'validation': None}
     for split in dataloaders:
         sample_tensors = []
+        
         for i, f in enumerate(tqdm(os.listdir(data_dir))):
             # Filter and load naïvely 
             if f'-l={layer_idx:0{max_layer_digits}d}-s={split}' in f:
                 print(f"Adding {f=}")
                 sample_tensors.append(torch.load(join(data_dir, f)))
+                if len(sample_tensors) > 10: 
+                    break
+
         samples = torch.cat(sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
         _dataset = AttentionInputDataset(samples)
         _dataloader = DataLoader(_dataset, shuffle=True if split == 'train' else False,
