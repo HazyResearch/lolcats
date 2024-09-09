@@ -92,6 +92,7 @@ Sample scripts and details for the chunk-level approach (approach 2) are at: [th
 
 ### Running evaluations and inference.
 
+We describe how we ran evaluations for the large models in [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/inference).
 
 ---
 

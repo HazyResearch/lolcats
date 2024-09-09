@@ -4,8 +4,13 @@
 
 We used the following procedure:
 
-1. Clone VLLM: https://github.com/vllm-project/vllm
-2. Copy the following LoLCATS specific files into vllm.
+### 1. Clone VLLM
+Also run VLLM installations.
+```bash
+git clone https://github.com/vllm-project/vllm
+``` 
+
+### 2. Copy the following LoLCATS specific files into vllm.
 
 ```
 bash 
@@ -17,7 +22,7 @@ And add the new LoLCATS models from:
 lolcats/inference/vllm_files/__init__.py -> vllm/model_executor/models/__init__.py
 ```
 
-3. Set the model checkpoint paths. 
+###  3. Set the model checkpoint paths. 
 
 Given your local download of the 405B weights, go to the ```Meta-Llama-3.1-405B/config.py``` file and modify the architecture list from ```LlamaForCausalLM``` to ```LlamaLolcatsForCausalLM```. 
 
@@ -29,7 +34,9 @@ python lolcats/inference/save_fsdp_to_hf_pt.py
 ```
 Be sure to hard-code the ```attn_mlp_checkpoint_path``` (containing the feature map and window factor weights) and ```finetune_checkpoint_path``` (containing the LoRA weights) into this file. This will spit out a ```.pt``` file.
 
-4. Run VLLM. This assumes you have 2 nodes of $8 \times 80$GB to fit the FP16 405B model. You are okay with 1 node for 70B parameters.
+### 4. Run VLLM. 
+
+These instructions assume you have 2 nodes of $8 \times 80$GB to fit the FP16 405B model. You are okay with 1 node for 70B parameters.
 ```bash
 
 # Step 1. Follow the VLLM installation quick start to install it in your environment.
@@ -42,7 +49,7 @@ ray start --address='ip from above' # on node 2
 vllm serve /path/to/hf/model/Meta-Llama-3.1-405B --tensor-parallel-size 16 --enforce-eager # on node 1
 ```
 
-5. Clone LM-Eval harness and run inference evaluations: 
+### 5. Clone LM-Eval harness and run inference evaluations: 
 ```bash
 git clone https://github.com/EleutherAI/lm-evaluation-harness
 git checkout b281b092
