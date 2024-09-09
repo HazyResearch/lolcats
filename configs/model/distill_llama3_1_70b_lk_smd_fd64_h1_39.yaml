@@ -1,0 +1,37 @@
+name: llama
+model:
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
+  cache_dir: "/scr-ssd/mzhang/models/llama-3_1-70b" # Set this to where you want to save checkpoint weights
+  return_dict: true
+  load_in_8bit: false
+  load_in_4bit: false
+  device_map: auto
+  low_cpu_mem_usage: true
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
+  rope_theta: 500000.0
+  rope_scaling:
+    factor: 8.0
+    low_freq_factor: 1.0
+    high_freq_factor: 4.0
+    original_max_position_embeddings: 8192
+    # rope_type: llama3
+    type: llama3
+
+attention:
+  attention_type: lolcats_llama
+  softmax_attentions: [1, 39]
+  feature_map: softmax_dim
+  feature_map_kwargs:
+    eps: 1e-12
+    # mlp: null  # to set
+    fullspace: true
+  layer_idx: null # to set
+  learned_kernel: untied_head_einsum
+  learned_kernel_kwargs:
+    feature_dim: 64
+    skip_connection: false
+    bias: false
+    zero_init: false
+  tie_qk_kernels: false
+  train_qk: false

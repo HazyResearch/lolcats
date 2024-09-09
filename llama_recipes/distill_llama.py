@@ -39,6 +39,7 @@ from llama_recipes.utils.fsdp_utils import (
 )
 from llama_recipes.trainer_attention import (
     train as _train_normal,
+    # freeze_transformer_layers,
     setup,
     setup_environ_flags,
     clear_gpu_cache,
@@ -48,6 +49,8 @@ from llama_recipes.trainer_attention import (
 # Ours
 from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
+    # load_model_checkpoint,
+    # save_model_checkpoint,
 )
 # from llama_recipes.trainer_attention_chunked import train as train_chunked
 # from torch.distributed.optim import DistributedOptimizer
@@ -70,6 +73,7 @@ from src.trainer import get_scheduler
 from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import (
     load_and_convert_attns,
+    # load_and_convert_finetune
 )
 from src.model.convert_model import toggle_attention
 
@@ -96,8 +100,6 @@ def get_args():
     parser.add_argument("--finetune_config", type=str, default=None)
     parser.add_argument("--eval_config", type=str, default=None)
 
-    parser.add_argument("--layers_per_model", type=int, default=None)
-
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
     parser.add_argument("--load_distill_checkpoint", type=str, default=None)
     parser.add_argument("--load_finetune_checkpoint", type=str, default=None)
@@ -120,7 +122,6 @@ def get_args():
     parser.add_argument("--low_cpu_fsdp", action='store_true', default=None)
     parser.add_argument("--pure_bf16", action='store_true', default=None)
     parser.add_argument("--fsdp_activation_checkpointing", action='store_true', default=None)
-    parser.add_argument("--fsdp_cpu_offload", action='store_true', default=None)
     
     ## Hyperparameters
     parser.add_argument("--lr", type=float, default=None)
@@ -172,6 +173,19 @@ def get_args():
 
     distill_name = args.distill_config
     finetune_name = args.finetune_config
+    # Alternative default naming
+    # if args.load_distill_checkpoint is not None and args.load_distill_checkpoint != 'default':
+    #     distill_name = get_run_name_from_checkpoint(args.load_distill_checkpoint)
+    # else:
+    #     distill_name = args.distill_config
+    # if args.load_finetune_checkpoint is not None and args.load_finetune_checkpoint != 'default':
+    #     finetune_name = get_run_name_from_checkpoint(args.load_finetune_checkpoint)
+    # else:
+    #     finetune_name = args.finetune_config
+    # if args.load_finetune_long_checkpoint is not None:
+    #     finetune_long_name = get_run_name_from_checkpoint(args.load_finetune_long_checkpoint)
+    # else:
+    #     finetune_long_name = args.finetune_long_config
 
     args.run_name = f'dl-d={distill_name}-m={args.model_config}-f={finetune_name}'
     if args.no_peft_grad_ckpt is not None:
@@ -250,7 +264,7 @@ def get_dataloaders(train_config, tokenizer, no_shuffle_train: bool = False):
         **val_dl_kwargs,
     )
     return train_loader, eval_loader, train_config
-    
+
 
 def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
     """
@@ -290,13 +304,8 @@ def main():
     # 1. SET UP
     # ---------
     args = get_args()
-
-    if args.enable_fsdp:
-        local_rank = int(os.environ["LOCAL_RANK"])
-        rank = int(os.environ["RANK"])
-
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
-    if not os.path.isdir(args.checkpoint_dir) and ((args.enable_fsdp and rank == 0 and local_rank == 0) or not args.enable_fsdp):
+    if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
 
     kwargs = vars(args)
@@ -374,16 +383,6 @@ def main():
 
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
-
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     model_loader = get_pretrained_loader(**model_config.model,
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()
@@ -392,7 +391,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'llama' in model_config.model.pretrained_model_name_or_path.lower():
+    if 'llama' in model_config.model.pretrained_model_name_or_path:
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
@@ -441,7 +440,6 @@ def main():
         print_header('Pretrained Model')
     
     model_config.model_name = model_config.model.pretrained_model_name_or_path
-
     print_model_size(model, model_config, rank if args.enable_fsdp else 0)
 
     # Prepare the model for int8 training if quantization is enabled
@@ -470,6 +468,13 @@ def main():
     if wandb_run and distill_peft_config is not None:
         wandb_run.config.update(distill_peft_config)
 
+    # if rank == 0:  # debugging
+    #     print_header('** Sanity check model weights **')
+    #     for n, p in model.named_parameters():
+    #         if ('layers.0.' in n and 'base_attn' not in n and 
+    #             '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+    #             print(f'-> {n}:\n', p)
+
     hsdp_device_mesh = None
     if fsdp_config.hsdp and fsdp_config.sharding_strategy == ShardingStrategy.HYBRID_SHARD:
         hsdp_device_mesh = get_hsdp_device_mesh(replica_group_size=fsdp_config.replica_group_size, sharding_group_size=fsdp_config.sharding_group_size)
@@ -477,6 +482,8 @@ def main():
         
     # Setting up FSDP if enable_fsdp is enabled
     if args.enable_fsdp:
+        # if not train_config.use_peft and train_config.freeze_layers:
+        #     freeze_transformer_layers(train_config.num_freeze_layers)
         mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank, model=model_type)
         my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, DecoderLayer)
         
@@ -493,6 +500,7 @@ def main():
             cpu_offload=CPUOffload(offload_params=True) if fsdp_config.fsdp_cpu_offload else None,
             mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
             sharding_strategy=fsdp_config.sharding_strategy,
+            # device_mesh=hsdp_device_mesh,
             device_id=device_id,
             limit_all_gathers=True,
             sync_module_states=args.low_cpu_fsdp,  # train_config.low_cpu_fsdp
@@ -576,8 +584,6 @@ def main():
         if args.verbose:
             print_config(distill_config)
     # Start the training process
-
-    max_optimizer_steps = getattr(distill_config.optimizer, 'max_optimizer_steps', None)
     results, best_checkpoint_path = train(
         model,
         train_dataloader,
@@ -590,7 +596,6 @@ def main():
         fsdp_config if args.enable_fsdp else None,
         local_rank if args.enable_fsdp else None,
         rank if args.enable_fsdp else None,
-        max_optimizer_steps,
         wandb_run,
         eval_mode = args.replicate == 42,
     )

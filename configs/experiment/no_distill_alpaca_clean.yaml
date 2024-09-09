@@ -1,0 +1,29 @@
+dataset:
+  name: alpaca_clean
+  dataset_config:
+    name: alpaca
+    path: yahma/alpaca-cleaned
+    chunk_size: 1024  # sequence length for distilling
+    concat_data: true
+    cache_dir: 'data/alpaca'  # Change this to where you want to save
+  pretrained_model_config:
+    pretrained_model_name_or_path: 'mistralai/Mistral-7B-v0.1'  # will be updated based on model_config
+    cache_dir: '/scr-ssd/mzhang/models/mistral-v0.1'
+  preprocess_config: null
+
+dataloader:
+  batch_size: 1
+  num_workers: 2
+  drop_last: false
+  pin_memory: true
+
+optimizer:
+  optim: adamw_torch_fused
+  lr: 0.01
+  weight_decay: 0.0
+
+lr_scheduler:
+  lr_scheduler_type: none
+
+trainer:  # HuggingFace Trainer-like arguments  
+  name: null

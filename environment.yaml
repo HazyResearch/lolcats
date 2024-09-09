@@ -1,4 +1,4 @@
-name: lolcats-env
+name: lolcats
 channels:
   - conda-forge
   - pytorch
@@ -8,7 +8,7 @@ dependencies:
   - python>=3.10
   - pip
   - pytorch
-  - pytorch-cuda=12.1 # or 12.1 depending on your supported CUDA version
+  - pytorch-cuda=11.8 # or 12.1 depending on your supported CUDA version
   - transformers=4.43.1 # Llama 3.1 support (updated RoPE)
   - datasets=2.15.0
   - nltk
@@ -27,7 +27,6 @@ dependencies:
   - tqdm
   - rich
   - wandb
-  - accelerate
   - pip:
     # - bitsandbytes>=0.39.0
       - peft==0.9.0

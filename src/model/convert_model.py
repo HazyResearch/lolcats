@@ -55,7 +55,7 @@ def remove_base_attention(llama_model: nn.Module):
 def traverse_layers(model: nn.Module, verbose: bool = False):
     """
     Return list of model layers
-    """ 
+    """
     try:
         layers = model.model.layers
         if verbose:
@@ -136,14 +136,6 @@ def get_attention(attention_type: str, **kwargs: any):
     elif attention_type == 'lolcats_llama_window_sw_scale':
         from .linear_attention.linear_window_attention_sw_scale import LolcatsSlidingWindowAttention
         return partial(LolcatsSlidingWindowAttention, **kwargs)
-
-    elif attention_type == 'lolcats_llama_window_tk_faster':
-        from .linear_attention.fast_linear_window_attention_tk import FasterLolcatsTKWindowAttention
-        return partial(FasterLolcatsTKWindowAttention, **kwargs)
-
-    elif attention_type == 'cylon_lolcats_llama_window_tk':
-        from .linear_attention.cylon_linear_attention import CylonLolcatsTKWindowAttention
-        return partial(CylonLolcatsTKWindowAttention, **kwargs)
 
     else:
         print(f'-> attention_type {attention_type} not handled... returning None')

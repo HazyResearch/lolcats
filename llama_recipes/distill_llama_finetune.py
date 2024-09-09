@@ -80,23 +80,6 @@ from distill_llama import (
 )
 
 
-import torch.distributed as dist
-from torch.distributed.elastic import rendezvous
-
-# Increase timeout
-os.environ['TORCHELASTIC_MAX_WAIT_TIME'] = '600'  # 10 minutes
-
-# Use a more robust rendezvous
-rendezvous_config = rendezvous.RendezvousParameters(
-    backend="c10d",
-    endpoint="tcp://MASTER_ADDR:MASTER_PORT",
-    run_id="MY_RUN_ID",
-    min_nodes=1,  # Minimum number of nodes to wait for
-    max_nodes=4,  # Maximum number of nodes to use
-    timeout=600
-)
-
-
 def main():
     # ---------
     # 1. SET UP
@@ -181,16 +164,6 @@ def main():
 
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
-
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     model_loader = get_pretrained_loader(**model_config.model, 
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()
@@ -199,7 +172,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'lama' in model_config.model.pretrained_model_name_or_path or 'ref_70' in model_config.model.pretrained_model_name_or_path:
+    if 'llama' in model_config.model.pretrained_model_name_or_path:
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
@@ -210,8 +183,6 @@ def main():
         args.attention_type = model_config['attention']['attention_type']
     except AttributeError:
         args.attention_type = 'lolcats_llama'
-
-    print(f"{args.attention_type=}")
     
     if args.enable_fsdp and args.low_cpu_fsdp:
         # for FSDP, we can save cpu memory by loading pretrained model on rank0 only.
@@ -264,39 +235,35 @@ def main():
     # -------------------------------
     # 3. CONVERT DISTILLED ATTENTIONS
     # -------------------------------
-    ckpt_name = None
-    # if args.load_distill_checkpoint is not None: 
-    #     ckpt_name = args.load_distill_checkpoint
-    #     print(f"Loading from {ckpt_name}")
+    # if 'peft_config' in model_config['attention']:    # Hack rn, but we assume finetuning LoRAs are a superset of
+    #     del model_config['attention']['peft_config']  # distilled attention LoRAs. So we only adapt the model once (when calling load_and_convert_finetune)
+    # elif 'peft' in model_config['attention']:
+    #     del model_config['attention']['peft']
     model, distill_peft_config = load_and_convert_attns(model, model_config,
                                                         attention_type=args.attention_type,
-                                                        checkpoint_path=ckpt_name, 
+                                                        checkpoint_path=None,  # args.load_distill_checkpoint, 
                                                         print_model=args.verbose,
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                         train_attention=False,
                                                         rank=rank)
-    print(f"Converted attentions.")
-    
     if rank == 0:
         print_header('** Sanity check model weights **')
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
         
-        if distill_config.trainer.name is not None: # SA: Flag if testing without a checkpoint
+        if distill_config.trainer.name is not None:
             if args.load_distill_checkpoint is not None:
                 model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
             else:
                 model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
-            print("-> Using loaded linear attentions")
         else:
-
             print(" -> Proceeding without learned linear attentions")
     
-    if distill_config.trainer.name is not None:
-        if wandb_run and distill_peft_config is not None:
-            wandb_run.config.update(distill_peft_config)
+    #     model.print_trainable_parameters()
+    if wandb_run and distill_peft_config is not None:
+        wandb_run.config.update(distill_peft_config)
         
     # ----------------------------
     # 4. ADD FINETUNING PARAMETERS
@@ -338,7 +305,7 @@ def main():
         elif torch.cuda.is_available():
             device_id = torch.cuda.current_device()
             print('-> device_id:', device_id)
-       
+
         model = FSDP(
             model,
             auto_wrap_policy=my_auto_wrapping_policy,  # if train_config.use_peft else wrapping_policy,
@@ -433,8 +400,6 @@ def main():
         if args.verbose:
             print_config(finetune_config)
     # Start the training process
-
-    max_optimizer_steps = getattr(distill_config.optimizer, 'max_optimizer_steps', None)
     results, best_checkpoint_path = train(
         model,
         train_dataloader,
@@ -447,9 +412,13 @@ def main():
         fsdp_config if args.enable_fsdp else None,
         local_rank if args.enable_fsdp else None,
         rank if args.enable_fsdp else None,
-        max_optimizer_steps,
         wandb_run,
     )
+    # if not args.enable_fsdp or rank==0:
+    #     for k,v in results.items():
+    #         print(f'Key: {k}, Value: {v}')
+    #         if not args.no_wandb:
+    #             wandb_run.summary[f'ft_{k}'] = v
                 
     # Save best model checkpoint as single .pt file
     if fsdp_config.checkpoint_type == StateDictType.FULL_STATE_DICT:
