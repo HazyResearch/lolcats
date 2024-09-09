@@ -119,9 +119,9 @@ For any of these commands, you may need to provide a Hugging Face token to downl
 We upload a couple checkpoints in `./checkpoints/`, where for any linearized 7B model we only need to save the linear attention layers and the LoRA weights (in two separate `.pt` checkpoints). To chat with these models, you can run:
 
 ```
-python -Wignore demo_hedgehog_llm.py \
---attn_checkpoint_path './checkpoints/distill_mistral_7b_lk_smd_zi/dl-d=distill_alpaca_clean_mistral_lr1e-2-m=distill_mistral_7b_lk_smd_eins-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=31-lk=untied_head_einsum-lsc=1-lzi=1_distill.pt' \
---peft_checkpoint_path './checkpoints/distill_mistral_7b_lk_smd_zi/dl-d=distill_alpaca_clean_mistral_lr1e-2-m=distill_mistral_7b_lk_smd_eins-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=31-lk=untied_head_einsum-lsc=1-lzi=1-bs=1-gas=8-nte=2-ms=-1-es=100-se=0-re=31_ft.pt' \
+python -Wignore demo_lolcats_llm.py \
+--attn_mlp_checkpoint_path './checkpoints/distill_mistral_7b_lk_smd_zi/dl-d=distill_alpaca_clean_mistral_lr1e-2-m=distill_mistral_7b_lk_smd_eins-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=31-lk=untied_head_einsum-lsc=1-lzi=1_distill.pt' \
+--finetune_checkpoint_path './checkpoints/distill_mistral_7b_lk_smd_zi/dl-d=distill_alpaca_clean_mistral_lr1e-2-m=distill_mistral_7b_lk_smd_eins-f=finetune_lora_qkvo_alpaca_clean_mistral-s=0-se=0-re=31-lk=untied_head_einsum-lsc=1-lzi=1-bs=1-gas=8-nte=2-ms=-1-es=100-se=0-re=31_ft.pt' \
 --num_generations 1 --benchmark
 ```
 
@@ -141,7 +141,7 @@ See `configs/model/` for model configs used in the below commands, and `configs/
 
 ```
 python distill_llama.py --model_config distill_mistral_7b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -153,7 +153,7 @@ python distill_llama.py --model_config distill_mistral_7b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_mistral_7b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -165,7 +165,7 @@ python distill_llama.py --model_config distill_mistral_7b_lk_smd_wtk64_fd64_w01 
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -177,7 +177,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -189,7 +189,7 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 
 ```
 python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_fd64 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -201,7 +201,7 @@ python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_fd64 \
 
 ```
 python distill_llama.py --model_config distill_llama3_1_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
@@ -217,7 +217,7 @@ The above scripts will save two checkpoints: (1) for the learned attention layer
 
 ```
 python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_lr1e-2 \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \

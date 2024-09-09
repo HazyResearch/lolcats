@@ -5,8 +5,8 @@ model:
   return_dict: true
   load_in_8bit: false
   load_in_4bit: false
-  device_map: auto
-  low_cpu_mem_usage: true
+  device_map: null
+  low_cpu_mem_usage: false
   torch_dtype: bfloat16
   attn_implementation: eager
   rope_theta: 500000.0

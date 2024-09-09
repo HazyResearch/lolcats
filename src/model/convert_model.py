@@ -150,12 +150,15 @@ def get_attention(attention_type: str, **kwargs: any):
         return None
 
 
-def get_attention_cache(attention_type: str):
+def get_attention_cache(attention_type: str, past_key_values: any = None):
     """
     Determine how we store past keys and values when generating
     """
+    if attention_type is None:
+        return past_key_values
+
     # print(f'Returning attention cache based on attention_type == {attention_type}')
-    if 'llama_window_tk' in attention_type:
+    elif 'llama_window_tk' in attention_type:
         from .linear_attention import LinearAttentionTKWindowCache
         return LinearAttentionTKWindowCache()
     
@@ -166,6 +169,9 @@ def get_attention_cache(attention_type: str):
     # elif 'llama_window_sw' in attention_type:
     #     from .linear_window_attention_sw import LolcatsAttentionSlidingWindowCache
     #     return LolcatsAttentionSlidingWindowCache()
+
+    elif 'softmax' in attention_type:
+        return past_key_values
 
     else:
         from .linear_attention import LinearAttentionState

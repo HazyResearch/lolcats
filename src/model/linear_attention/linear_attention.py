@@ -283,6 +283,10 @@ class LolcatsLinearAttention(nn.Module):
         self.k_proj = base_attn.k_proj
         self.v_proj = base_attn.v_proj
         self.o_proj = base_attn.o_proj
+        try:  # If wanting to use FA2 for ground-truth inference
+            self._flash_attn_uses_top_left_mask = base_attn._flash_attn_uses_top_left_mask
+        except AttributeError: 
+            pass
 
         if self.remove_base_attn or remove_base_attn:
             del base_attn  # We don't need to keep these around

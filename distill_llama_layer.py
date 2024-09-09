@@ -1,64 +1,28 @@
 """
-Alternate way to do things where we convert a block of Llama decoder layers into linear attention equivalents
+Alternate way to do things where we convert a single attention layer into a linear attention layer
 
 This lets us linearize big models in a decentralized manner without interconnect. 
 Just take a layer and train.
 
-python distill_llama_mini.py \
+python distill_llama_layer.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
---lk_zero_init --lr 1e-3 \
---layer_idx 0 --layers_per_model 8 --device 0 \
---verbose --seed 0 --replicate 0 
-
-python distill_llama_mini.py \
---model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
---lk_zero_init --lr 1e-3 \
---layer_idx 8 --layers_per_model 8 --device 0 \
---verbose --seed 0 --replicate 0
-
-python distill_llama_mini.py \
---model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
---lk_zero_init --lr 1e-3 \
---layer_idx 16 --layers_per_model 8 --device 0 \
---verbose --seed 0 --replicate 0
-
-python distill_llama_mini.py \
---model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
---lk_zero_init --lr 1e-3 \
---layer_idx 24 --layers_per_model 8 --device 0 \
---verbose --seed 0 --replicate 0
+--lk_zero_init --verbose --seed 0 --replicate 0 \
+--layer_idx 0 --device 0 --lr 1e-3
 """
-from typing import Optional, Tuple, Union, List
 import sys
 import os
 from os.path import join
-import copy
 
 import argparse
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 from transformers import PretrainedConfig, LlamaConfig
-from transformers.cache_utils import Cache
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention, LlamaMLP, LlamaRMSNorm, LlamaConfig, 
-    LlamaModel, LlamaForCausalLM, LlamaRotaryEmbedding
-)
-from transformers.modeling_outputs import (
-    CausalLMOutputWithPast
-)
 
 from src.utils.setup import (
     init_wandb, seed_everything, flatten_config, get_run_name_from_args,
@@ -73,6 +37,8 @@ from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
 from src.model.convert_model import toggle_attention, remove_base_attention, traverse_layers
 from src.model.utils import count_parameters
+
+from transformers.models.llama.modeling_llama import LlamaAttention
 from src.model.convert_model import get_attention
 
 
@@ -80,8 +46,7 @@ def get_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--project_name", type=str, default='lolcats')
-    parser.add_argument("--layers_per_model", type=int)
-    parser.add_argument("--layer_idx", type=int)  # specify starting layer
+    parser.add_argument("--layer_idx", type=int)  # specify the layer
     parser.add_argument("--device", type=int, default=0)
 
     parser.add_argument("--model_config", type=str, default=None)
@@ -162,7 +127,7 @@ class AttentionInputDataset(Dataset):
     def __getitem__(self, idx):
         x = self.samples[idx]
         position_ids = torch.arange(x.shape[-2])
-        return {'inputs_embeds': x, 'position_ids': position_ids}
+        return {'hidden_states': x, 'position_ids': position_ids}
 
 
 def load_data(data_dir: str, layer_idx: int, max_layer: int = 32, 
@@ -175,7 +140,7 @@ def load_data(data_dir: str, layer_idx: int, max_layer: int = 32,
     dataloaders = {'train': None, 'validation': None}
     for split in dataloaders:
         sample_tensors = []
-        for i, f in enumerate(os.listdir(data_dir)):
+        for f in os.listdir(data_dir):
             # Filter and load naïvely 
             if f'-l={layer_idx:0{max_layer_digits}d}-s={split}' in f:
                 sample_tensors.append(torch.load(join(data_dir, f)))
@@ -187,154 +152,11 @@ def load_data(data_dir: str, layer_idx: int, max_layer: int = 32,
     return dataloaders
 
 
-# -----------
-# Mini Llamas
-# -----------
-class LlamaMiniDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, layer_idx: int, 
-                 apply_input_layernorm: bool = True):
-        super().__init__()
-        self.hidden_size = config.hidden_size
-        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
-        self.apply_input_layernorm = apply_input_layernorm  # Hack, but patch for saving attention inputs
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
-        # apply_input_layernorm: Optional[bool] = True,  # Ours
-        **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        
-        residual = hidden_states
-
-        if self.apply_input_layernorm:  # Ours
-            hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
-            position_embeddings=position_embeddings,
-            **kwargs,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
-
-
-class LlamaMiniModel(LlamaModel):
-    def __init__(self, config: LlamaConfig):
-        super().__init__(config)
-        self.padding_idx = config.pad_token_id
-        self.vocab_size = config.vocab_size
-
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([
-            LlamaMiniDecoderLayer(config, layer_idx, apply_input_layernorm=layer_idx > 0) 
-            for layer_idx in range(config.num_hidden_layers)
-        ])
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = LlamaRotaryEmbedding(config=config)
-        self.gradient_checkpointing = False
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-
-class LlamaMiniModelForCausalLM(LlamaForCausalLM):
-    """
-    Pass in `inputs_embeds` for model.forward()
-    """
-    def __init__(self, config):
-        super().__init__(config)
-        self.model = LlamaMiniModel(config)
-        self.vocab_size = config.vocab_size
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-            cache_position=cache_position,
-        )
-        hidden_states = outputs[0]
-        return CausalLMOutputWithPast(
-            loss=None,
-            logits=None,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
-
-
 def main():
     # ------
     # SET UP
     # ------
     args = get_args()
-
-    # Where to save the output model checkpoints?
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
@@ -342,11 +164,11 @@ def main():
     args.checkpoint_dir = join(args.checkpoint_dir, 'sharded_layers')
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
-
     args.results_dir = join(args.results_dir, args.model_config)
     if not os.path.isdir(args.results_dir):
         os.makedirs(args.results_dir)
     seed_everything(args.seed)
+    # args.device = torch.device('cuda')
 
     # Load distillation + (hedgehog) attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
@@ -359,18 +181,20 @@ def main():
 
     # Get data directory for layer-wise input tensors
     dataset_name = distill_config.dataset.name
-    cache_dir = distill_config.dataset.dataset_config.cache_dir # SA Flag: just hardcode this
+    cache_dir = distill_config.dataset.dataset_config.cache_dir
     model_name = model_config.model.pretrained_model_name_or_path.replace('/', '_')
 
-    # training on one gpu
     rank = 0
-
+    
     if rank == 0 or not args.enable_fsdp:
-        data_dir = cache_dir    # SA Flag
-        print(f"Looking for data in {data_dir}")
-        assert os.path.exists(data_dir), print(f"{data_dir} does not exist!")
-        print(f"Nice, {data_dir} exists!")
-
+        try:
+            # Example: meta-llama_Meta-Llama-3.1-70B/attn_inputs-l=31-split=train-b=0499.pt
+            data_dir = join(cache_dir, dataset_name, model_name) 
+        except Exception as e:
+            print(f'Data directory {join(cache_dir, dataset_name, model_name)} not found.')
+            print(f'Please see ./llama_recipes/save_llama_attn_inputs.py to save those tensors.')
+            raise e
+        
     # Update data tokenizer to match model
     if getattr(distill_config.dataset, 'pretrained_model_config', None) is not None:
         for k in ['pretrained_model_name_or_path', 'cache_dir']:
@@ -380,6 +204,9 @@ def main():
     if 'optimizer' in model_config:
         for k, v in model_config.optimizer.items():
             distill_config.optimizer[k] = v
+
+    # Update distilling trainer to reflect layer-wise
+    distill_config.trainer.name = 'layer_distill_xent_mse'
     
     print_header('Distillation Config')
     print_config(distill_config)
@@ -393,14 +220,10 @@ def main():
     pretrained_model_class = getattr(transformers_module, pretrained_model_class)  # e.g, LlamaForCausalLM
 
     # Final run name / checkpoint naming setup
-    num_hidden_layers = pretrained_model_config.num_hidden_layers  # e.g., 32 for Llama 8B
+    num_hidden_layers = pretrained_model_config.num_hidden_layers  # 32
     max_digits = len(str(num_hidden_layers))
-    start, end = args.layer_idx, args.layer_idx + args.layers_per_model - 1
-    name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-    args.run_name += f'-{name_suffix}'  # will save layer-wise checkpoints
+    args.run_name += f'-layer={args.layer_idx:0{max_digits}d}'  # will save layer-wise checkpoints
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
-    print(f"Running distill for {num_hidden_layers}; Layers {start} through {end}!")
-    print(f"{args.run_name=}")
 
     # WandB logging
     wandb = init_wandb(args)
@@ -428,98 +251,67 @@ def main():
         pretrained_model_config = LlamaConfig.from_dict(pretrained_model_config)
         # teacher_attn = LlamaAttention(pretrained_model_config, layer_idx=args.layer_idx)
 
-    mini_config = copy.deepcopy(pretrained_model_config).to_dict()
-    mini_config['num_hidden_layers'] = args.layers_per_model
-    mini_config['attn_implementation'] = 'eager'
-    mini_config = LlamaConfig.from_dict(mini_config)
-    model_config.model.attn_implementation = 'eager'
-    
-    # Load relevant model weights from memory for the mini student and teacher models
-    try:  
-        # If they already exist in ./checkpoints... then just load that
-        teacher_mini_llama = LlamaMiniModelForCausalLM(mini_config)
+    try:  # Load individual layer from memory
+        teacher_attn = LlamaAttention(pretrained_model_config, layer_idx=args.layer_idx)
         with torch.no_grad():
             pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
-            pretrained_fname = join(args.checkpoint_dir, pretrained_fname) + f'-{name_suffix}.pt'
-            teacher_mini_llama.load_state_dict(torch.load(pretrained_fname))
+            pretrained_fname = join(args.checkpoint_dir, pretrained_fname) + f'-attn={args.layer_idx}.pt'
+            teacher_attn.load_state_dict(torch.load(pretrained_fname))
             print_header('All teacher weights loaded successfully')
-        for p in teacher_mini_llama.parameters():   # Freeze all layers
+        for p in teacher_attn.parameters():   # Freeze all layers
             p.requires_grad = False
-
-        student_mini_llama = copy.deepcopy(teacher_mini_llama)
-        student_mini_llama = load_and_convert_attns(student_mini_llama, model_config,
-                                                    attention_type=None, # specified in model_config,
-                                                    checkpoint_path=None,
-                                                    print_model=args.verbose,
-                                                    train_attention=True)[0]
+        
+        model_attn = get_attention(**model_config['attention'])(
+            base_attn=teacher_attn, layer_idx=args.layer_idx, 
+            max_layer_idx=pretrained_model_config.num_hidden_layers - 1,
+            train_attention=True, remove_base_attn=True
+        )  # .to(dtype=dtype)
         print(f'-> Loaded pretrained attention from {pretrained_fname}!')
-    except Exception as e: 
-
-        # Load entire model to disk and save the shards to ./checkpoints.
+    except Exception as e:  # Load entire model to disk
         print('-> Addressing exception:', e)
-        print(f"Now saving the shards!")
         # Get pretrained model
         model_config.model['device_map'] = 'cpu'
-
-        # load the model
         model_loader = get_pretrained_loader(**model_config.model,
                                              huggingface_token=args.huggingface_token)
         model = model_loader.load(model_type='softmax')
         for p in model.parameters():   # Freeze all layers
             p.requires_grad = False
         model.eval()
-        
-        # Save pretrained Transformer weights
-        mini_llama = LlamaMiniModelForCausalLM(mini_config) # SA: this assumes that the layers evenly divide
-
+        # Save pretrained attention weights
         with torch.no_grad():
-            first = 0
             for layer_idx, layer in enumerate(tqdm(traverse_layers(model), desc=f'Saving layer attentions to {args.checkpoint_dir}...')):
                 pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
+                pretrained_fname = join(args.checkpoint_dir, pretrained_fname) + f'-attn={layer_idx}.pt'
+                torch.save(layer.self_attn.state_dict(), pretrained_fname)
 
-                mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict())
-                if (layer_idx + 1) % args.layers_per_model == 0:
-                    pretrained_fname = (
-                        join(args.checkpoint_dir, pretrained_fname) + 
-                        f'-in={first:0{max_digits}d}-out={layer_idx:0{max_digits}d}.pt'
-                    )  # name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-                    torch.save(mini_llama.state_dict(), pretrained_fname)
-                    print(f"Saved to: {pretrained_fname}!")
-                    first = layer_idx
-                    del mini_llama
-                    mini_llama = LlamaMiniModelForCausalLM(mini_config)
-        del model
-
-        # Load relevant model weights for the teacher
-        teacher_mini_llama = LlamaMiniModelForCausalLM(mini_config)
-        start, end = args.layer_idx, args.layer_idx + args.layers_per_model
+        teacher_attn = LlamaAttention(pretrained_model_config)
         with torch.no_grad():
             pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
-            pretrained_fname = join(args.checkpoint_dir, pretrained_fname) + f'-{name_suffix}.pt'
-            teacher_mini_llama.load_state_dict(torch.load(pretrained_fname))
+            pretrained_fname = join(args.checkpoint_dir, pretrained_fname) + f'-attn={args.layer_idx}.pt'
+            teacher_attn.load_state_dict(torch.load(pretrained_fname))
             print_header('All teacher weights loaded successfully')
-        for p in teacher_mini_llama.parameters():   # Freeze all layers
+        for p in teacher_attn.parameters():   # Freeze all layers
             p.requires_grad = False
+        
+        model_attn = get_attention(**model_config['attention'])(
+            base_attn=teacher_attn, layer_idx=args.layer_idx, 
+            max_layer_idx=pretrained_model_config.num_hidden_layers - 1,
+            train_attention=True, remove_base_attn=True
+        )
+        del model
 
-        student_mini_llama = copy.deepcopy(teacher_mini_llama)
-        student_mini_llama = load_and_convert_attns(student_mini_llama, model_config,
-                                                    attention_type=None, # specified in model_config,
-                                                    checkpoint_path=None,
-                                                    print_model=args.verbose,
-                                                    train_attention=True)[0]
-    
     device = torch.device(f'cuda:{args.device}')
-    student_mini_llama = student_mini_llama.to(device, dtype=dtype)
-    student_mini_llama.to(device)  # hack
-    teacher_mini_llama = teacher_mini_llama.to(device, dtype=dtype)
-    teacher_mini_llama.to(device)  # hack
+    model_attn = model_attn.to(device, dtype=dtype)
+    model_attn.device = device  # hack
+    teacher_attn.eval()
+    teacher_attn.to(dtype=dtype)
 
     if args.verbose:
         print_header(f'*** Initial Layer {args.layer_idx} ***')
-        print(student_mini_llama)
+        print(model_attn)
         print_header('*** Trainable Parameters ***')
         count = 0
-        for n, p in student_mini_llama.named_parameters():
+        for n, p in model_attn.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (requires_grad = {p.requires_grad}, dtype = {p.dtype})')
                 count += 1
@@ -530,16 +322,14 @@ def main():
     # Stage 1: Attention Transfer
     # ---------------------------
     if args.load_distill_checkpoint is None:
-        print(f"Loading the data frm {data_dir}")
         dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
                                 **distill_config.dataloader)
         train_loader = dataloaders['train']
         eval_loader  = dataloaders['validation']
-        print(f"Done loading the data")
 
         # Log some stats
-        distill_config.model_train_params = count_parameters(student_mini_llama, requires_grad=True)
-        distill_config.model_total_params = count_parameters(student_mini_llama, requires_grad=False)
+        distill_config.model_train_params = count_parameters(model_attn, requires_grad=True)
+        distill_config.model_total_params = count_parameters(model_attn, requires_grad=False)
         pct_trainable = distill_config.model_train_params / distill_config.model_total_params
 
         print_header('*** Distillation Parameter Counts ***')
@@ -548,7 +338,7 @@ def main():
         print(f'├── Percent training to distill: {pct_trainable * 100:.3f}%')
 
         # Get optimizer and scheduler
-        optimizer = get_optimizer(model=student_mini_llama, **distill_config.optimizer)
+        optimizer = get_optimizer(model=model_attn, **distill_config.optimizer)
         scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)    
             
         # Load trainer 
@@ -558,36 +348,36 @@ def main():
         for _config in ['dataloader', 'optimizer', 'lr_scheduler']:
             setattr(args, _config, OmegaConf.to_container(getattr(distill_config, _config)))
             
-        print(f"Getting trainer: {distill_config.trainer.name}")
         OurTrainer = get_trainer(distill_config.trainer.name)
-        trainer = OurTrainer(model=student_mini_llama, 
-                             layer_idx=args.layer_idx,
-                             args=args,
-                             train_loader=train_loader,
-                             eval_loader=eval_loader,
-                             optimizer_and_scheduler=(optimizer, scheduler),
-                             device=args.device,
-                             wandb=wandb,
-                             checkpoint_suffix='_distill',
-                             save_results=False,
-                             **distill_config.trainer)
+        trainer = OurTrainer(model=model_attn, 
+                            layer_idx=args.layer_idx,
+                            args=args,
+                            train_loader=train_loader,
+                            eval_loader=eval_loader,
+                            optimizer_and_scheduler=(optimizer, scheduler),
+                            device=args.device,
+                            wandb=wandb,
+                            checkpoint_suffix='_distill',
+                            save_results=False,
+                            **distill_config.trainer)
 
         # Train / distill model
         print_header('*** Distilling Attentions ***')
         print(f'├── Experiment name: {args.run_name}')
         print(f'├── Device: {args.device}')
         print(f'├── Seed: {args.seed}')
-        student_mini_llama = toggle_attention(student_mini_llama, train=True)
-        student_mini_llama = trainer.train()
+        model_attn.train_attention = True  # we did this above already
+        model_attn = trainer.train()
         args.load_distill_checkpoint = trainer.best_val_checkpoint_path  # saved here
     else:
         with torch.no_grad():
-            student_mini_llama.load_state_dict(
+            model_attn.load_state_dict(
                 torch.load(args.load_distill_checkpoint)['model_state_dict'], strict=False,)
 
     # Prepare for 2nd stage finetune
-    student_mini_llama = toggle_attention(student_mini_llama, train=False)
-    student_mini_llama = remove_base_attention(student_mini_llama)
+    model_attn.train_attention = False
+    if getattr(model_attn, 'base_attn', False):
+        del model_attn.base_attn
 
     # --------------------------
     # Stage 2: Low-rank Adapting
@@ -595,48 +385,57 @@ def main():
     if args.max_finetune_steps is not None:
         args.max_steps = args.max_finetune_steps
 
+    pretrained_model_config = pretrained_model_config.to_dict()  # Ordinarily not mutable, and 
+                                                                 # TypeError: 'PretrainedConfig' object is not subscriptable
+    pretrained_model_config['num_hidden_layers'] = 1  # only one layer
+    pretrained_model_config = LlamaConfig.from_dict(pretrained_model_config)
+    model = pretrained_model_class(pretrained_model_config)  # hacks
+    with torch.no_grad():
+        model.model.layers[0].self_attn = model_attn  # Should be the same
+        model.model.layers[0].self_attn.load_state_dict(model_attn.state_dict())
+
     finetune_config, args = prepare_finetune_configs(args, model_config, args.finetune_config)
-    try:
-        train_loader = dataloaders['train']
-        eval_loader  = dataloaders['validation']
-    except:
-        dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
-                                **distill_config.dataloader)
-        train_loader = dataloaders['train']
-        eval_loader  = dataloaders['validation']
+    dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
+                            **distill_config.dataloader)
+    train_loader = dataloaders['train']
+    eval_loader  = dataloaders['validation']
+
+    # Update distilling trainer to reflect layer-wise
+    finetune_config.trainer.name = 'layer_finetune_xent_mse'
     
     checkpoint_path = args.load_finetune_checkpoint
-    student_mini_llama, ft_peft_config = load_and_convert_finetune(student_mini_llama, finetune_config, 
-                                                                   checkpoint_path=checkpoint_path,  # could be None
-                                                                   print_model=False,  # args.verbose,
-                                                                   merge_loras=False,
-                                                                   peft_gradient_checkpointing=not args.no_peft_grad_ckpt,)
-    
+    model, ft_peft_config = load_and_convert_finetune(model, finetune_config, 
+                                                      checkpoint_path=checkpoint_path,  # could be None
+                                                      print_model=False,  # args.verbose,
+                                                      merge_loras=False,
+                                                      peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
+                                                      add_self_attn_prefix=False,)
+    model_attn = traverse_layers(model)[0].self_attn
     # Initialize optimizer and scheduler
-    optimizer = get_optimizer(model=student_mini_llama, **finetune_config.optimizer)
+    optimizer = get_optimizer(model=model_attn, **finetune_config.optimizer)
     scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
 
     if args.verbose:
-        print_header(f'*** Finetuning Layers {args.layer_idx} - {args.layer_idx + args.layers_per_model - 1} ***')
-        print(student_mini_llama)
+        print_header(f'*** Finetune Layer {args.layer_idx} ***')
+        print(model_attn)
         print_header('*** Trainable Parameters ***')
         count = 0
-        for n, p in student_mini_llama.named_parameters():
+        for n, p in model_attn.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (requires_grad = {p.requires_grad}, dtype = {p.dtype})')
                 count += 1
         if count == 0:  # no trainable parameters
             print('(none)')
 
-        print_header(f'*** Teacher Layers {args.layer_idx} - {args.layer_idx + args.layers_per_model - 1} ***')
-        print(teacher_mini_llama)
+        print_header(f'*** Teacher Layer {args.layer_idx} ***')
+        print(teacher_attn)
         # assert teacher_attn.q_proj.weight == model_attn.q_proj.base_layer
     
     OurTrainer = get_trainer(finetune_config.trainer.name)
-    for p in teacher_mini_llama.parameters():
+    for p in teacher_attn.parameters():
         p.requires_grad = False
-    finetune_trainer = OurTrainer(model=student_mini_llama, 
-                                  teacher_layer=teacher_mini_llama.to(student_mini_llama.device),
+    finetune_trainer = OurTrainer(model=model_attn, 
+                                  teacher_layer=teacher_attn.to(model_attn.device),
                                   layer_idx=args.layer_idx,
                                   args=args,
                                   train_loader=train_loader,
@@ -654,7 +453,7 @@ def main():
     print(f'├── Experiment name: {args.run_name}')
     print(f'├── Device: {args.device}')
     print(f'├── Seed: {args.seed}')
-    student_mini_llama = finetune_trainer.train()
+    model_attn = finetune_trainer.train()
     args.load_finetune_checkpoint = finetune_trainer.best_val_checkpoint_path
 
     if ft_peft_config is not None and wandb is not None:

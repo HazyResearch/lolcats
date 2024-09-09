@@ -3,13 +3,12 @@ dataset:
   dataset_config:
     name: default
     path: yahma/alpaca-cleaned
-    chunk_size: 1024 # 2048
+    chunk_size: 1024
     concat_data: true
-    cache_dir: "data/"
+    cache_dir: "data/alpaca"
   pretrained_model_config:
-    pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
-    pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
-    cache_dir: null
+    pretrained_model_name_or_path: "mistralai/Mistral-7B-v0.1" # will be updated based on model_config
+    cache_dir: "/data_persistent2/sim_data/"
   preprocess_config: null
 
 dataloader:
@@ -19,9 +18,9 @@ dataloader:
   pin_memory: true
 
 optimizer:
-  optim: adamw_torch # adamw
-  lr: 0.01
-  # weight_decay: 0.0
+  optim: adamw_torch_fused
+  lr: 1e-4
+  weight_decay: 0.0
 
 lr_scheduler:
   lr_scheduler_type: reduce_lr_on_plateau
@@ -31,10 +30,10 @@ lr_scheduler:
   min_lr: 0.00001
 
 trainer: # HuggingFace Trainer-like arguments
-  name: distill_attention_xent_mse
+  name: mini_finetune_xent_mse
   mse_factor: 1000
-  xent_factor: 0
-
+  xent_factor: 1
+  
   bf16: true
   train_split: train
   val_split: validation
@@ -44,17 +43,17 @@ trainer: # HuggingFace Trainer-like arguments
   batch_size: 1
   load_best_model_at_end: true
   greater_is_better: false
-  metric_for_best_model: distill/eval/loss
+  metric_for_best_model: eval/loss # eval/rouge/geometric_mean
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 160 # round number for batch size grad accums
+  eval_steps: 100
   max_eval_batches: null
 
-fsdp:
-  save_model: true 
-  run_validation: true
-  use_fp16: false
-  save_optimizer: false
-  gradient_clipping: true  # false
-  gradient_clipping_threshold: 1.0
+finetune:
+  method: lora
+  kwargs:
+    r: 8
+    lora_alpha: 16 # 32
+    lora_dropout: 0 # 0.05
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]

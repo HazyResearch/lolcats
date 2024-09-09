@@ -147,6 +147,9 @@ class PretrainedLlamaLoader(PretrainedModelLoader):
         if model_type is None:
             from transformers import LlamaForCausalLM as model_class
 
+        elif 'lolcats_llama_sharded' in model_type:
+            from .modeling_llama_sharded import ShardedLolcatsLlamaForCausalLM as model_class
+
         elif 'lolcats_long_llama' in model_type:
             from .modeling_llama import LooooolcatsLlamaForCausalLM as model_class
         
