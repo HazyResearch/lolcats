@@ -138,7 +138,6 @@ class LolcatsLinearAttention(nn.Module):
                  fp32_attention: bool = False,
                  track_state_grads: bool = False,
                  rank: Optional[int] = 0,
-                 num_feature_maps: int = 1,
                  **kwargs: any) -> None:
         super().__init__()
         self.base_config = getattr(base_attn, 'config', None)
@@ -176,43 +175,8 @@ class LolcatsLinearAttention(nn.Module):
             self.rotary_emb = base_attn.rotary_emb
 
         self.init_weights_(base_attn, remove_base_attn)
-        self.num_feature_maps = num_feature_maps
-
-        if self.num_feature_maps > 1:
-            self.init_feature_maps_(feature_map, feature_map_kwargs,
+        self.init_feature_map_(feature_map, feature_map_kwargs,
                                learned_kernel, learned_kernel_kwargs)
-        else:
-            self.init_feature_map_(feature_map, feature_map_kwargs,
-                               learned_kernel, learned_kernel_kwargs)
-
-    def init_feature_maps_(self,
-                          feature_map: str,
-                          feature_map_kwargs: dict,
-                          learned_kernel: str = None,
-                          learned_kernel_kwargs: dict = None):
-        
-        self.feature_map_qs = []
-        self.feature_map_ks = []
-        for i in range(self.num_feature_maps):
-            self.fmap_gqa = False  # Turn True if specified below
-            if learned_kernel is not None:
-                learned_kernel_kwargs = {k: v for k, v in learned_kernel_kwargs.items()}
-                learned_kernel_kwargs['num_heads'] = self.num_heads
-                learned_kernel_kwargs['head_dim']  = self.head_dim
-                learned_kernel_kwargs['dtype']     = self.q_proj.weight.dtype
-                learned_kernel_kwargs['device']    = self.q_proj.weight.device
-                mlp_learned_kernel = init_learned_kernel(learned_kernel, **learned_kernel_kwargs)
-            
-            # Add "activation"; see src.models.feature_map.py
-            feature_map_q = init_feature_map(name=feature_map,
-                                                mlp=mlp_learned_kernel,
-                                                **feature_map_kwargs)
-            if self.tie_qk_kernels:  # tie mlp weights for query and key feature maps
-                feature_map_k = feature_map_q
-            else:
-                feature_map_k = copy.deepcopy(feature_map_q)
-            self.feature_map_qs.append(feature_map_q)
-            self.feature_map_ks.append(feature_map_k)
 
     def init_feature_map_(self,
                           feature_map: str,
@@ -232,12 +196,10 @@ class LolcatsLinearAttention(nn.Module):
             learned_kernel_kwargs['device']    = self.q_proj.weight.device
             # Create MLP
             mlp_learned_kernel = init_learned_kernel(learned_kernel, **learned_kernel_kwargs)
-        
         # Add "activation"; see src.models.feature_map.py
         self.feature_map_q = init_feature_map(name=feature_map,
                                               mlp=mlp_learned_kernel,
                                               **feature_map_kwargs)
-
         if self.tie_qk_kernels:  # tie mlp weights for query and key feature maps
             self.feature_map_k = self.feature_map_q
         else:
@@ -301,13 +263,6 @@ class LolcatsLinearAttention(nn.Module):
         """
         Compute queries, keys, and values
         """
-        # SA Flag
-        if position_ids is None: 
-            # Get batch size and sequence length from hidden states
-            batch_size, seq_length = hidden_states.size()[:2]
-            position_ids = torch.arange(seq_length, dtype=torch.long, device=hidden_states.device)
-            position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
-
         b, l, _ = hidden_states.size()
         q = self.q_proj(hidden_states)
         k = self.k_proj(hidden_states)

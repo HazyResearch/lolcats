@@ -9,8 +9,6 @@ In this README:
 - Getting started with dependencies, installation, and experiment configs
 - Sample commands (Mistral-7B-v0.1, Llama-3-8B, Llama-3.1-8B, Llama-3.1-70B)
 
-RedPajama data: [https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data]
-
 ---
 
 ## Getting started

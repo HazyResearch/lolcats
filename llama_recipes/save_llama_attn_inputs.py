@@ -101,7 +101,7 @@ from distill_llama import (
 from tqdm import tqdm
 
 
-CUTOFF_BATCH = 20   # Save to disk and delete tensors every CUTOFF_BATCH
+CUTOFF_BATCH = 500   # Save to disk and delete tensors every CUTOFF_BATCH
                      # to save CPU memory
 
 
@@ -190,14 +190,6 @@ def main():
     # ------------------------
     # 2. LOAD PRETRAINED MODEL
     # ------------------------
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
 
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
@@ -209,7 +201,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'lama' in model_config.model.pretrained_model_name_or_path:
+    if 'llama' in model_config.model.pretrained_model_name_or_path:
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
@@ -302,13 +294,6 @@ def main():
     # -----------------------------------
     # Compute dataset layer-wise outputs
     # -----------------------------------
-    layer_interval = args.layers_per_model 
-    assert layer_interval > 0, print("Need to pass in args.layers_per_model")
-    save_dir = f"/scratch/sim/{model_name}"
-    os.makedirs(save_dir, exist_ok=True) 
-
-    model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
-    seqlen = distill_config.dataset['dataset_config']['chunk_size']
     for split, dataloader in {'train': train_dataloader, 'validation': eval_dataloader}.items():
         if rank == 0 or not args.enable_fsdp:
             print_header(f'*** Computing layer-wise {split} outputs ***')
@@ -341,27 +326,26 @@ def main():
                 if args.enable_fsdp:
                     dist.barrier()
 
-                # torch.distributed.barrier()
-                if (step + 1) % CUTOFF_BATCH == 0:  # Flag
+                if (step + 1) % CUTOFF_BATCH == 0:
                     # Save layer-wise outputs to disk
                     for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
-                        if layer_idx % layer_interval == 0:
-                            attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
-                            fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
-                            torch.save(attn_inputs, fpath)
-                    print(f'-> Saved {rank} layer-wise tensors for {split} to {save_dir}!')
-                    print(f'-> Example: {fpath}')
+                        attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+                        fpath = join(data_dir, f'attn_inputs-l={layer_idx:0{max_layer_digits}d}-s={split}-b={step:0{max_digits}d}.pt')
+                        torch.save(attn_inputs, fpath)
+                    if rank == 0 or not args.enable_fsdp:
+                        print(f'-> Saved layer-wise tensors for {split} to {data_dir}!')
+                        print(f'-> Example: {fpath}')
                     del attn_inputs_by_layer
                     attn_inputs_by_layer = [[] for _ in range(len(model.model.layers))]
         
         # Save layer-wise outputs to disk
         for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
-            if layer_idx % layer_interval == 0:
-                attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
-                fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
-                torch.save(attn_inputs, fpath)
-        print(f'-> Saved {rank} layer-wise tensors for {split} to {save_dir}!')
-        print(f'-> Example: {fpath}')
+            attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+            fpath = join(data_dir, f'attn_inputs-l={layer_idx:0{max_layer_digits}d}-s={split}-b={step:0{max_digits}d}.pt')
+            torch.save(attn_inputs, fpath)
+        if rank == 0 or not args.enable_fsdp:
+            print(f'-> Saved layer-wise tensors for {split} to {data_dir}!')
+            print(f'-> Example: {fpath}')
 
 if __name__ == "__main__":
     main()

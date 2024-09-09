@@ -75,10 +75,7 @@ def get_tokenizer_from_config(model_config):
     elif 'Mistral-7B' in model_config['pretrained_model_name_or_path']:
         tokenizer = AutoTokenizer.from_pretrained(**model_config)
     else:
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(**model_config)
-        except:
-            tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-405B")
+        tokenizer = AutoTokenizer.from_pretrained(**model_config)
     return tokenizer
 
 

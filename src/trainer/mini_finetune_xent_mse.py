@@ -59,30 +59,13 @@ class OurTrainer(DefaultTrainer):
                - outputs[0] are the layer outputs
                - outputs[1] are attentions (or other saved tensors)
         """
-<<<<<<< HEAD
-        try:
-            _data_kwargs = {'device': model.q_proj.weight.device, 
-                            'dtype':  model.q_proj.weight.dtype}
-        except:
-            ref_weight = model.model.model.layers[0].self_attn.q_proj.base_layer.weight
-            _data_kwargs = {'device': ref_weight.device, 
-                            'dtype':  ref_weight.dtype}
-
-        inputs = {'inputs_embeds': data['inputs_embeds'].to(**_data_kwargs)}
-=======
         # inputs = {'inputs_embeds': data['hidden_states'].to(**_data_kwargs)}
         inputs = {'inputs_embeds': data['inputs_embeds'].to(**self._data_kwargs)}
->>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
         if 'position_ids' in data:
             inputs['position_ids'] = data['position_ids'].to(device=self.data_kwargs['device'])
 
         # Teacher outputs
         with torch.no_grad():
-<<<<<<< HEAD
-            _n = data['inputs_embeds'].shape[-2]  # construct attention mask for ground-truth softmax
-            y_true = self.teacher_layer(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
-            y_true, a_true = y_true.get('hidden_states'), y_true.get('attentions')
-=======
             model = toggle_lora(model, use_lora=False)
             outputs = model(**inputs, output_attentions=True, use_cache=False)
             outputs = outputs.get('attentions')  # ((_, a_true), (_, _y_true)) x layers
@@ -91,7 +74,6 @@ class OurTrainer(DefaultTrainer):
             # y_true = self.teacher_layer(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
             # y_true = model(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
             # y_true, a_true = y_true.get('hidden_states'), y_true.get('attentions')
->>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
 
         # Student outputs
         model = toggle_lora(model, use_lora=True)
@@ -106,13 +88,8 @@ class OurTrainer(DefaultTrainer):
 
         loss_mse = 0
         loss_xent = 0
-<<<<<<< HEAD
-
-=======
->>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
         for layer_idx in range(len(a_pred)):  # indexed by n_layers
             if self.xent_factor > 0:
-                
                 _a_pred, _a_true = a_pred[layer_idx], a_true[layer_idx]
                 
                 # Cross-entropy loss

@@ -20,7 +20,7 @@ def get_pretrained_loader(pretrained_model_name_or_path: str,
     Return the appropriate loader for the pretrained model
     """
 
-    if 'lama' in pretrained_model_name_or_path or 'ref_70' in pretrained_model_name_or_path:  # Llama or llama
+    if 'lama' in pretrained_model_name_or_path:  # Llama or llama
         return PretrainedLlamaLoader(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             huggingface_token=huggingface_token,
@@ -63,7 +63,7 @@ class PretrainedModelLoader():
                  pretrained_model_name_or_path: str,
                  cache_dir: str = None,
                  return_dict: bool = True,  # False
-                 device_map: str = None,
+                 device_map: str = 'auto',
                  low_cpu_mem_usage: bool = True,
                  torch_dtype: str = 'bfloat16',
                  rope_theta: float = 10000.,
@@ -131,8 +131,6 @@ class PretrainedModelLoader():
         Load pretrained tokenizer
         """
         try:
-            print("-> Loading tokenizer from AutoTokenizer")
-            print(self.loading_kwargs)
             return AutoTokenizer.from_pretrained(**self.loading_kwargs)
         except Exception as e:
             print("-> Error with `AutoTokenizer.from_pretrained(**self.loading_kwargs)`:", e)

@@ -122,8 +122,3 @@ llama_recipes/distill_llama_finetune.py \
 --enable_fsdp --low_cpu_fsdp \
 --dataset_chunk_size 768 \
 ```
-
-```
-pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/cu121/
-pip install flash-attn --no-build-isolation
-```

@@ -32,7 +32,7 @@ from model.utils import count_parameters
 def get_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='llama_recipes')
+    parser.add_argument("--project_name", type=str, default='lolcats')
     parser.add_argument("--model_config", type=str, default=None)
     parser.add_argument("--distill_config", type=str, default=None)
     parser.add_argument("--finetune_config", type=str, default=None)
@@ -370,6 +370,7 @@ def main():
 # ------------------
 # Evaluation helpers
 # ------------------
+
 def get_evaluator(model, eval_config, args, device, wandb):
     """
     Get final evaluator class

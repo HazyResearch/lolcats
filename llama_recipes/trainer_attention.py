@@ -15,8 +15,6 @@ from datetime import datetime
 from pkg_resources import packaging
 import yaml
 
-# print(f"{os.environ['WORLD_SIZE']=}")
-
 import torch
 import torch.nn as nn
 import torch.cuda.nccl as nccl
@@ -137,7 +135,6 @@ class LossComputer():
 def train(model, train_dataloader, eval_dataloader, tokenizer,
           optimizer, lr_scheduler, gradient_accumulation_steps,
           train_config, fsdp_config=None, local_rank=None, rank=None, 
-          max_optimizer_steps=None,
           wandb_run=None, eval_mode=False) -> tuple[dict[torch.Tensor], str]:
     """
     Trains the model on the given dataloader
@@ -157,12 +154,10 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         results dictionary containing average training and validation loss
         best_checkpoint_path: The path to the best checkpoint
     """
-    assert len(eval_dataloader) > 0, print(f"{len(eval_dataloader)=}")
     loss_computer = LossComputer(**train_config.trainer)
 
     if rank == 0 or rank is None:
         print('-> Gradient accumulation steps:', gradient_accumulation_steps)
-        print('-> Max optimizer steps:', max_optimizer_steps)
         print('-> Total # of training samples:', len(train_dataloader))
         total_length = len(train_dataloader)//gradient_accumulation_steps
         print('-> Total # of training updates:', total_length)
@@ -175,7 +170,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         scaler = torch.cuda.amp.GradScaler()
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"]) 
-        print('-> world_size:', world_size)
+        # print('-> world_size:', world_size)
 
     autocast = torch.cuda.amp.autocast if train_config.use_fp16 else nullcontext
 
@@ -194,8 +189,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
     results = {}
     best_val_loss = float("inf")
     best_checkpoint_path = None
-    total_optimizer_steps = 0
-    end = False
     for epoch in range(train_config.num_epochs):
         epoch_start_time = time.perf_counter()
         with MemoryTrace() as memtrace:  # track the memory usage
@@ -208,10 +201,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             total_length = len(train_dataloader)//gradient_accumulation_steps
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
-                if step >= total_length: break # SA added for RP data
-
                 model.train()
-                # print(f'-> {rank=}, {step=}')
+                # print('-> step:', step)
                 for key in batch.keys():
                     if key == 'labels':
                         batch[key] = None  # don't use labels for attention distillation
@@ -247,8 +238,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(), train_config.gradient_clipping_threshold)
                         scaler.step(optimizer)
-                        total_optimizer_steps += 1
-                        # print(f"{rank=}, {total_optimizer_steps=}")
                         scaler.update()
                         optimizer.zero_grad()
                         pbar.update(1)
@@ -265,8 +254,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                                 torch.nn.utils.clip_grad_norm_(
                                     model.parameters(), train_config.gradient_clipping_threshold)
                         optimizer.step()
-                        total_optimizer_steps += 1
-                        # print(f"{rank=}, {total_optimizer_steps=}")
                         optimizer.zero_grad()
                         pbar.update(1)
                 if wandb_run:
@@ -287,11 +274,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
                 if step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic
-
-                if max_optimizer_steps is not None and total_optimizer_steps >= max_optimizer_steps:
-                    print(f"Reached max_optimizer_steps = {max_optimizer_steps}")
-                    end = True 
-                    break 
 
                 if (train_config.run_validation and (
                     (step + 1) % (train_config.eval_steps * gradient_accumulation_steps) == 0)):  #  or step == len(train_dataloader) - 1)):
@@ -342,10 +324,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
         # Saving the results every epoch to plot later
         if train_config.save_metrics:
             save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
-
-        if end: 
-            print(f"Stopping for optimizer_step {max_optimizer_steps}")
-            break
 
     avg_epoch_time = sum(epoch_times)/ len(epoch_times)
     avg_checkpoint_time = sum(checkpoint_times)/ len(checkpoint_times) if len(checkpoint_times) > 0 else 0
@@ -460,9 +438,6 @@ def evaluate_attn(model, train_config, eval_dataloader,
     _epoch = f' {epoch}' if epoch is not None else ''
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
-        if step >= 100: 
-            break
-
         for key in batch.keys():
             if train_config.enable_fsdp:
                 batch[key] = batch[key].to(local_rank)
@@ -485,22 +460,18 @@ def evaluate_attn(model, train_config, eval_dataloader,
             desc += f" | {k}: {v:.5f}"
         pbar.set_description(desc)
 
-    def ensure_tensor(value, device):
-        if not isinstance(value, torch.Tensor):
-            return torch.tensor([value], device=device)
-        return value
-
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        dist.all_reduce(ensure_tensor(eval_loss, 'cuda'), op=dist.ReduceOp.SUM)
+        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
     if torch.cuda.device_count() > 1 and train_config.enable_fsdp:
-        dist.all_reduce(ensure_tensor(eval_loss, 'cuda'), op=dist.ReduceOp.SUM)
+        dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
 
     # Compute average loss
-    print(f"{len(eval_dataloader)=}")
+    # print('len(eval_dataloader):', len(eval_dataloader))
+    # print('step + 1:', step + 1)
+    # print('world_size:', world_size)
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     if train_config.enable_fsdp:
-        print(f"{world_size=}")
         eval_epoch_loss = eval_epoch_loss/world_size
 
     eval_epoch_loss = eval_epoch_loss.cpu().float().item()

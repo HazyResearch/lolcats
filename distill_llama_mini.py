@@ -188,7 +188,7 @@ def load_data(data_dir: str, layer_idx: int, max_layer: int = 32,
     dataloaders = {'train': None, 'validation': None}
     for split in dataloaders:
         sample_tensors = []
-        for i, f in enumerate(os.listdir(data_dir)):
+        for f in os.listdir(data_dir):
             # Filter and load naïvely 
             if f'-l={layer_idx:0{max_layer_digits}d}-s={split}' in f:
                 sample_tensors.append(torch.load(join(data_dir, f)))
@@ -346,8 +346,6 @@ def main():
     # SET UP
     # ------
     args = get_args()
-
-    # Where to save the output model checkpoints?
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
@@ -355,11 +353,11 @@ def main():
     args.checkpoint_dir = join(args.checkpoint_dir, 'sharded_layers')
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
-
     args.results_dir = join(args.results_dir, args.model_config)
     if not os.path.isdir(args.results_dir):
         os.makedirs(args.results_dir)
     seed_everything(args.seed)
+    # args.device = torch.device('cuda')
 
     # Load distillation + (hedgehog) attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
@@ -372,18 +370,20 @@ def main():
 
     # Get data directory for layer-wise input tensors
     dataset_name = distill_config.dataset.name
-    cache_dir = distill_config.dataset.dataset_config.cache_dir # SA Flag: just hardcode this
+    cache_dir = distill_config.dataset.dataset_config.cache_dir
     model_name = model_config.model.pretrained_model_name_or_path.replace('/', '_')
 
-    # training on one gpu
     rank = 0
-
+    
     if rank == 0 or not args.enable_fsdp:
-        data_dir = cache_dir    # SA Flag
-        print(f"Looking for data in {data_dir}")
-        assert os.path.exists(data_dir), print(f"{data_dir} does not exist!")
-        print(f"Nice, {data_dir} exists!")
-
+        try:
+            # Example: meta-llama_Meta-Llama-3.1-70B/attn_inputs-l=31-split=train-b=0499.pt
+            data_dir = join(cache_dir, dataset_name, model_name) 
+        except Exception as e:
+            print(f'Data directory {join(cache_dir, dataset_name, model_name)} not found.')
+            print(f'Please see ./llama_recipes/save_llama_attn_inputs.py to save those tensors.')
+            raise e
+        
     # Update data tokenizer to match model
     if getattr(distill_config.dataset, 'pretrained_model_config', None) is not None:
         for k in ['pretrained_model_name_or_path', 'cache_dir']:
@@ -406,14 +406,12 @@ def main():
     pretrained_model_class = getattr(transformers_module, pretrained_model_class)  # e.g, LlamaForCausalLM
 
     # Final run name / checkpoint naming setup
-    num_hidden_layers = pretrained_model_config.num_hidden_layers  # e.g., 32 for Llama 8B
+    num_hidden_layers = pretrained_model_config.num_hidden_layers  # 32
     max_digits = len(str(num_hidden_layers))
     start, end = args.layer_idx, args.layer_idx + args.layers_per_model - 1
     name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
     args.run_name += f'-{name_suffix}'  # will save layer-wise checkpoints
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
-    print(f"Running distill for {num_hidden_layers}; Layers {start} through {end}!")
-    print(f"{args.run_name=}")
 
     # WandB logging
     wandb = init_wandb(args)
@@ -463,15 +461,10 @@ def main():
                                             print_model=args.verbose,
                                             train_attention=True)[0]
         print(f'-> Loaded pretrained attention from {pretrained_fname}!')
-    except Exception as e: 
-
-        # Load entire model to disk and save the shards to ./checkpoints.
+    except Exception as e:  # Load entire model to disk
         print('-> Addressing exception:', e)
-        print(f"Now saving the shards!")
         # Get pretrained model
         model_config.model['device_map'] = 'cpu'
-
-        # load the model
         model_loader = get_pretrained_loader(**model_config.model,
                                              huggingface_token=args.huggingface_token)
         model = model_loader.load(model_type='softmax')
@@ -480,7 +473,7 @@ def main():
         model.eval()
         
         # Save pretrained Transformer weights
-        mini_llama = LlamaMiniModelForCausalLM(mini_config) # SA: this assumes that the layers evenly divide
+        mini_llama = LlamaMiniModelForCausalLM(mini_config)
 
         with torch.no_grad():
             first = 0
@@ -536,12 +529,10 @@ def main():
     # Stage 1: Attention Transfer
     # ---------------------------
     if args.load_distill_checkpoint is None:
-        print(f"Loading the data frm {data_dir}")
         dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
                                 **distill_config.dataloader)
         train_loader = dataloaders['train']
         eval_loader  = dataloaders['validation']
-        print(f"Done loading the data")
 
         # Log some stats
         distill_config.model_train_params = count_parameters(mini_llama, requires_grad=True)
@@ -564,7 +555,6 @@ def main():
         for _config in ['dataloader', 'optimizer', 'lr_scheduler']:
             setattr(args, _config, OmegaConf.to_container(getattr(distill_config, _config)))
             
-        print(f"Getting trainer: {distill_config.trainer.name}")
         OurTrainer = get_trainer(distill_config.trainer.name)
         trainer = OurTrainer(model=mini_llama,
                              layer_idx=args.layer_idx,
