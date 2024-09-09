@@ -189,7 +189,8 @@ def get_args():
     return args
 
 
-def setup_wandb(train_config, fsdp_config, run_name = None, **kwargs):
+def setup_wandb(train_config, fsdp_config, run_name = None, 
+                project: str = None, entity: str = None, **kwargs):
     """
     Setup WandB for logging
     """
@@ -201,7 +202,7 @@ def setup_wandb(train_config, fsdp_config, run_name = None, **kwargs):
             "Please install it using pip install wandb"
         )
     from llama_recipes.configs import wandb_config as WANDB_CONFIG
-    wandb_config = WANDB_CONFIG()
+    wandb_config = WANDB_CONFIG(project=project, entity=entity)
     update_config(wandb_config, **kwargs)
     init_dict = dataclasses.asdict(wandb_config)
     run = wandb.init(name=run_name, **init_dict)

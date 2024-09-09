@@ -8,10 +8,10 @@ from omegaconf import OmegaConf, DictConfig, ListConfig
 
 
 def _format_arg(arg_name: str, cutoff=2) -> str:
-    arg_name = str(arg_name)
     if arg_name is None:
         return arg_name
-
+    arg_name = str(arg_name)
+    
     # Hardcode to handle backslash
     name_splits = arg_name.split('/')
     if len(name_splits) > 1:
@@ -39,11 +39,11 @@ def print_args(args, return_dict=False, verbose=True):
     """
     attributes = [a for a in dir(args) if a[0] != '_']
     arg_dict = {}  # switched to ewr
-    if verbose: 
+    if verbose:
         print('ARGPARSE ARGS')
     for ix, attr in enumerate(attributes):
         fancy = '└─' if ix == len(attributes) - 1 else '├─'
-        if verbose: 
+        if verbose:
             print(f'{fancy} {attr}: {getattr(args, attr)}')
         arg_dict[attr] = getattr(args, attr)
     if return_dict:

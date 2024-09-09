@@ -4,7 +4,19 @@ Custom trainer class for distilling attentions. Can substitute for HuggingFace t
 import torch
 import torch.nn as nn
 
+from peft.tuners.lora.layer import LoraLayer
+
 from .default_lm import OurTrainer as DefaultTrainer
+from src.model.convert_model import traverse_layers, toggle_attention
+
+
+
+def toggle_lora(model, use_lora: bool = True):
+    for layer in traverse_layers(model):
+        for n, module in layer.self_attn.named_modules():
+            if isinstance(module, LoraLayer):
+                module._disable_adapters = not use_lora
+    return model
 
 
 class OurTrainer(DefaultTrainer):
@@ -15,13 +27,13 @@ class OurTrainer(DefaultTrainer):
     - We then train the student layers to minimize either MSE(outputs) or CrossEntropy(weights)
     """
     def __init__(self,
-                 model: nn.Module,  # attention layer
-                 teacher_layer: nn.Module,
+                 model: nn.Module,
                  layer_idx: int,
                  metric_for_best_model: str = 'ft/eval/loss',
                  mse_factor: float = 1e3,
                  xent_factor: float = 0,
                  **kwargs: any):
+        model = toggle_attention(model, train=True)  # keep train_attention logic
         super().__init__(model=model, 
                          metric_for_best_model=metric_for_best_model,
                          **kwargs)
@@ -32,10 +44,8 @@ class OurTrainer(DefaultTrainer):
         self.layer_idx = layer_idx
         self.initial_eval = False  # Whether to evaluate before training
 
-        self.teacher_layer = teacher_layer
-        self.teacher_layer.eval()
-        for p in self.teacher_layer.parameters():
-            p.requires_grad = False # freeze teacher
+        self._data_kwargs = {'device': model.device, 
+                             'dtype': traverse_layers(model)[0].self_attn.q_proj.weight.dtype}
 
     def compute_loss(self, model: nn.Module, data: dict[torch.Tensor],
                      sample_idx: int = None, **kwargs: any,) -> tuple[torch.Tensor, dict[any]]:
@@ -49,6 +59,7 @@ class OurTrainer(DefaultTrainer):
                - outputs[0] are the layer outputs
                - outputs[1] are attentions (or other saved tensors)
         """
+<<<<<<< HEAD
         try:
             _data_kwargs = {'device': model.q_proj.weight.device, 
                             'dtype':  model.q_proj.weight.dtype}
@@ -58,24 +69,47 @@ class OurTrainer(DefaultTrainer):
                             'dtype':  ref_weight.dtype}
 
         inputs = {'inputs_embeds': data['inputs_embeds'].to(**_data_kwargs)}
+=======
+        # inputs = {'inputs_embeds': data['hidden_states'].to(**_data_kwargs)}
+        inputs = {'inputs_embeds': data['inputs_embeds'].to(**self._data_kwargs)}
+>>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
         if 'position_ids' in data:
-            inputs['position_ids'] = data['position_ids'].to(**_data_kwargs)
+            inputs['position_ids'] = data['position_ids'].to(device=self.data_kwargs['device'])
 
         # Teacher outputs
         with torch.no_grad():
+<<<<<<< HEAD
             _n = data['inputs_embeds'].shape[-2]  # construct attention mask for ground-truth softmax
             y_true = self.teacher_layer(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
             y_true, a_true = y_true.get('hidden_states'), y_true.get('attentions')
+=======
+            model = toggle_lora(model, use_lora=False)
+            outputs = model(**inputs, output_attentions=True, use_cache=False)
+            outputs = outputs.get('attentions')  # ((_, a_true), (_, _y_true)) x layers
+            a_true = [o[0][1] for o in outputs]
+            y_true = [o[1][1] for o in outputs]
+            # y_true = self.teacher_layer(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
+            # y_true = model(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
+            # y_true, a_true = y_true.get('hidden_states'), y_true.get('attentions')
+>>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
 
         # Student outputs
-        y_pred = model(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
-        y_pred, a_pred = y_pred.get('hidden_states'), y_pred.get('attentions')
+        model = toggle_lora(model, use_lora=True)
+        outputs = model(**inputs, output_attentions=True, use_cache=False).get('attentions')
+        a_pred = [o[0][0] for o in outputs]
+        y_pred = [o[1][0] for o in outputs]
+
+        # y_pred = model(**inputs, output_attentions=True, output_hidden_states=True, use_cache=False)
+        # y_pred, a_pred = y_pred.get('hidden_states'), y_pred.get('attentions')
     
         inputs = {k: v.cpu() for k, v in inputs.items()}  # save gpu memory
 
         loss_mse = 0
         loss_xent = 0
+<<<<<<< HEAD
 
+=======
+>>>>>>> 66aa3985ecceabd259ca8fe6c587b95c51a74686
         for layer_idx in range(len(a_pred)):  # indexed by n_layers
             if self.xent_factor > 0:
                 

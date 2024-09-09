@@ -8,7 +8,7 @@ model:
   device_map: auto
   low_cpu_mem_usage: true
   torch_dtype: bfloat16
-  attn_implementation: eager
+  attn_implementation: flash_attention_2
   rope_theta: 500000.0
   rope_scaling:
     factor: 8.0
