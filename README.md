@@ -1,14 +1,14 @@
 # LoLCATS in a Trenchcoat
 
 <p align="center">
-<img src="assets/hedgehog_llamas_big.png" align='center' width=40% height=40%>
+<img src="assets/hedgehog_llamas_big.png" align='center' width=35% height=35%>
 </p>
 
-This readme describes how to train scaled up, 70B and 405B parameter, LoLCATS!
+This readme describes how to obtain scaled up, 70B and 405B parameter, LoLCATS!
 
 ---
 
-## Getting started
+### Getting started
 
 Please see the main branch README for: 
 - Setup and installation instructions. 
@@ -62,7 +62,7 @@ llama_recipes/distill_llama_finetune.py \
 See https://huggingface.co/blog/llama31#training-memory-requirements
 
 
-#### Prepared scripts
+### Pre-prepared scripts
 
 In the ```scripts/``` folder, we provide pre-constructed commands for Llama 3.1 70B and Llama 3.1 405B distillation. 
 
@@ -84,7 +84,11 @@ cd lolcats/
 bash scripts/llama3_1_405b/405b_e2e_xent1_mse1000.sh
 ```
 
-Sample scripts and details for the chunk-level approach (approach 2) are at: [this README.md]()
+Sample scripts and details for the chunk-level approach (approach 2) are at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/trenchcoat)
+
+
+### Running evaluations
+
 
 ---
 
