@@ -28,7 +28,7 @@ export MASTER_ADDR=$(host $MASTER_HOSTNAME | awk '/has address/ { print $4 }')
 export MASTER_PORT=29500
 export PYTHONPATH=/home/simarora/code/lolcats/
 
-srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/stitch_mini.py \
+srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/trenchcoat_lolcat//stitch_mini.py \
 --model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
 --distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
 --finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
