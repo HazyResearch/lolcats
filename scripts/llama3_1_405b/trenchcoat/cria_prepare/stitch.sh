@@ -37,5 +37,4 @@ srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_bac
 --layers_per_model 9 --layer_idx 0 \
 --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing 
 
-# Note: make sure to launch from the correct conda environment
 

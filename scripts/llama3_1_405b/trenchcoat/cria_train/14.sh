@@ -1,5 +1,5 @@
 
-export PYTHONPATH=/home/simarora/code//lolcats/
+export PYTHONPATH=/home/simarora/code//lolcats/ # Change to your path.
 
 # Save the model shards: 14 chunks of 9 layers
 CUDA_VISIBLE_DEVICES=0 python llama_recipes/distill_mini_train.py \
@@ -10,4 +10,3 @@ CUDA_VISIBLE_DEVICES=0 python llama_recipes/distill_mini_train.py \
 --layer_idx 117 --layers_per_model 9 --device 0
 
 
-# --load_distill_checkpoint "/home/simarora/code/lolcats/checkpoints/dl-d=llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-3-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125_distill.pt" \
