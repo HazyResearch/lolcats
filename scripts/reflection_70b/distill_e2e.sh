@@ -49,6 +49,6 @@ torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/distill_llama_finetune.py \
     --verbose --replicate 0 --seed 0 \
     --lk_zero_init \
     --eval_steps 100 --dataset_chunk_size 1024 \
-    --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing
+    --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing --fsdp_cpu_offload
 
     

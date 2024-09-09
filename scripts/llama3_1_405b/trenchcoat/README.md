@@ -1,5 +1,5 @@
 
-
+## LoLCATS-Crias in a Trenchcoat
 
 For the LoLCATS-Crias in a Trenchcoat approach, instead of distilling the attention maps all at once, we do it in chunks of C layers at once. Recall that a baby Llama is called a Cria.
 
@@ -13,8 +13,10 @@ The steps to do this are as follows:
 
 If I let $C=9$, where the 405B Llama has a total of $126$ Transformer layers and $16384$ hidden size, and I use $T$ training data tokens in total, then the amount of resources I need are:
 
-- Disk space: $14 \times 16384 \times T \times 2$ bytes of disk space. Roughly $4$ terrabytes if $T = 40M$. 
+- Disk space: $14 \times 16384 \times T \times 2$ bytes of disk space. Roughly $4$ terrabytes if $T = 40M$ tokens of training data. 
+
 - GPUs: You will need to load the full base Llama 405B model in order to (1) collect the Cria inputs, (2) shard the model into groups of $9$ layers, and (3) at the very end, to do LoRA finetuning -- we used $3$ nodes of $8 \times 80GB$ GPUs for this. During attention distillation, $9$ layers takes roughly $50$GB of disk space at $16$-bit precision, and *just* fits in GPU during training.
+
 - CPU: We save out the training data (inputs from prior Cria) in torch datasets. When we load this in during training, it consumes CPU RAM -- if you run into issues then use less data or re-engineer the datasets logic.
 
 

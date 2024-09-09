@@ -15,6 +15,7 @@ Please see the main branch README for:
 - Details on how the experimental config files are oriented (yaml structure).
 - Instructions to install optional CUDA kernels.
 
+---
 
 ### Overview: Linearizing large language models.
 
@@ -61,6 +62,7 @@ llama_recipes/distill_llama_finetune.py \
 
 See https://huggingface.co/blog/llama31#training-memory-requirements
 
+---
 
 ### Pre-prepared scripts
 
@@ -86,8 +88,9 @@ bash scripts/llama3_1_405b/405b_e2e_xent1_mse1000.sh
 
 Sample scripts and details for the chunk-level approach (approach 2) are at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/trenchcoat)
 
+---
 
-### Running evaluations
+### Running evaluations and inference.
 
 
 ---
