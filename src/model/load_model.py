@@ -106,7 +106,8 @@ def load_and_convert_finetune(model: nn.Module,
                               print_model: bool = False,
                               merge_loras: bool = False,
                               peft_gradient_checkpointing: bool = None,
-                              rank: int = 0):
+                              rank: int = 0,
+                              **peft_kwargs: any):
     """
     Load trained adapter / model weights
     """
@@ -116,7 +117,8 @@ def load_and_convert_finetune(model: nn.Module,
         if getattr(finetune_config.finetune, 'kwargs', None) is not None:
             model, peft_config = create_peft_config(
                 model, finetune_config.finetune,
-                use_gradient_checkpointing=peft_gradient_checkpointing
+                use_gradient_checkpointing=peft_gradient_checkpointing,
+                **peft_kwargs,
             )
         # Keep specified weights trainable
         if 'trainable_weights' in finetune_config.finetune:

@@ -27,8 +27,9 @@ def prepare_finetune_configs(args, model_config: dict,
     finetune_config = update_config_from_args(finetune_config, args,
                                               ignore_args=['lr', 'weight_decay'])
     # Update data tokenizer to match model
-    for k in ['pretrained_model_name_or_path', 'cache_dir']:
-        finetune_config.dataset.pretrained_model_config[k] = model_config['model'][k]
+    if getattr(finetune_config.dataset, 'pretrained_model_config', None) is not None:
+        for k in ['pretrained_model_name_or_path', 'cache_dir']:
+            finetune_config.dataset.pretrained_model_config[k] = model_config['model'][k]
     # Set finetuning args
     for arg, argv in finetune_config.trainer.items():
         if arg != 'name':

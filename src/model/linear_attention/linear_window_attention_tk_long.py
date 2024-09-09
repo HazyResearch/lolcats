@@ -28,9 +28,9 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
     """
     Lolcats attention combining sliding window and linear attention
     """
-    def __init__(self, remove_base_attn=False, **kwargs):
+    def __init__(self, remove_base_attn=True, **kwargs):
         # keep self.base_attn for Flash Attention inference
-        super().__init__(remove_base_attn=False, **kwargs)
+        super().__init__(remove_base_attn=True, **kwargs)
 
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -49,7 +49,8 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
         b, l, _ = hidden_states.size()
         if self.train_attention and self.base_inference:
             with torch.no_grad():
-                _y_true = flash_attention_2(self.base_attn,
+                # print(hidden_states.shape)
+                _y_true = flash_attention_2(self,  # self.base_attn,
                                             hidden_states=hidden_states,
                                             attention_mask=None,
                                             position_ids=position_ids,
@@ -60,7 +61,8 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
                 # _y_true.shape is (batch_size, seq_len, num_heads, head_dim)
                 y_true = _y_true.reshape(b, l, -1).contiguous()
                 y_true = self.o_proj(y_true)
-                layer_io = (hidden_states.cpu(), _y_true.cpu())  # hack
+                layer_io = (hidden_states, _y_true)  # hack
+                # layer_io = (hidden_states.cpu(), _y_true.cpu())  # hack
                 return y_true, layer_io, None
 
         q, k, v, kv_seq_len = self.process_qkv(hidden_states, attention_mask,

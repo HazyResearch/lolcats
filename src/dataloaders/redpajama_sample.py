@@ -26,9 +26,6 @@ from .utils.packing import ConcatDataset
 
 logger = logging.get_logger(__name__)
 
-# from datasets import load_dataset
-# ds = load_dataset("togethercomputer/RedPajama-Data-1T-Sample", cache_dir="/home/simarora/code/lolcats/data/rp")
-
 
 def get_lm_loader(dataset: Dataset, tokenizer: AutoTokenizer, 
                   split: str, max_length: int = None, **loader_kwargs: any):

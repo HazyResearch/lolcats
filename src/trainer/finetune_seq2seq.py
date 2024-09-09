@@ -55,6 +55,8 @@ class OurTrainer(DefaultTrainer):
         self.is_better = lambda x, y: x > y  # Hardcode greater is better for now
         self.print_steps = getattr(args, 'print_steps', 100)
         print(f'self.print_steps:', self.print_steps)
+        # ablation sweep
+        self.max_eval_batches = 10
         # if self.max_eval_batches is None:
         #     self.max_eval_batches = 100
 
@@ -79,6 +81,7 @@ class OurTrainer(DefaultTrainer):
         total_loss = 0
         metrics = {}
         max_batches = self.max_eval_batches if max_batches is None else max_batches
+        max_batches = 10  # ablation sweep
 
         dataloader = (dataloader if dataloader is not None else self.eval_loader)
 
