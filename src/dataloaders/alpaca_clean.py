@@ -22,7 +22,7 @@ from .utils import (
     get_lm_loader, get_seq2seq_loader,
     convert_to_hf_dataset, 
     get_tokenizer_from_config,
-    download_scrolls_metric as download_metric
+    # download_scrolls_metric as download_metric
 )
 from .utils.packing import ConcatDataset
 
@@ -52,9 +52,14 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     input_len = dataset_config['chunk_size']
     concat_data = dataset_config['concat_data']
 
-    tokenizer_name = pretrained_model_config['pretrained_model_name_or_path']
-    tokenizer_name = tokenizer_name.split('/')[-1]
-    # save_path = join(cache_dir, f'{name}_{tokenizer_name}')
+    import os
+    if not os.path.exists(pretrained_model_config['pretrained_model_name_or_path']) and 'pretrained_model_name_or_path_backup' in pretrained_model_config:
+        print(f"Using backup path.")
+        tokenizer_name = pretrained_model_config['pretrained_model_name_or_path_backup']
+        tokenizer_name = tokenizer_name.split('/')[-1]
+    else:
+        tokenizer_name = pretrained_model_config['pretrained_model_name_or_path']
+        tokenizer_name = tokenizer_name.split('/')[-1]
     
     # Setup tokenizer
     tokenizer = get_tokenizer_from_config(pretrained_model_config)
@@ -80,9 +85,10 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         dataset = train_set  # hack to work with below code
     else:
         dataset = dataset['train']
-        train_set = convert_to_hf_dataset([dataset[ix] for ix in range(200, len(dataset))], cache_dir)
-        val_set   = convert_to_hf_dataset([dataset[ix] for ix in range(200)], cache_dir)
-        test_set  = convert_to_hf_dataset([dataset[ix] for ix in range(200)], cache_dir)
+        print(f"Overall length: {len(dataset)=}")
+        train_set = convert_to_hf_dataset([dataset[ix] for ix in range(500, len(dataset))], cache_dir)
+        val_set   = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
+        test_set  = convert_to_hf_dataset([dataset[ix] for ix in range(500)], cache_dir)
 
     # Convert to dicts of {input_ids, attention_mask, labels}
     train_set = train_set.map(
@@ -116,7 +122,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     # Finishing touches
     for k, v in dataloaders.items():  # Make tokenizer accessible
         dataloaders[k].dataset.tokenizer = tokenizer
-        dataloaders[k].dataset.metric = metric
+        # dataloaders[k].dataset.metric = metric
     return dataloaders
 
 
