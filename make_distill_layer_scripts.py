@@ -1,12 +1,13 @@
 """
 Based on input args, create layer distill scripts
 
+(screen -r h2)
 python make_distill_layer_scripts.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean_layer_xent1_mse1000 \
---lk_zero_init --verbose --seed 0 --replicate 0 \
---layer_idx 0 --device 0 --lr 1e-3
+--lk_zero_init --verbose --seed 0 --replicate 0 --lr 1e-3 \
+--device 0
 
 """
 import sys

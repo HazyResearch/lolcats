@@ -85,7 +85,7 @@ class OurTrainer(DefaultTrainer):
             outputs = {'loss_xent': loss_xent.item() if self.xent_factor > 0 else 0,
                        'loss_mse': loss_mse.item() if self.mse_factor > 0 else 0,
                        'input_len': data['position_ids'].shape[1],
-                       'position_ids': data['position_ids'][0],
+                       'position_ids': data['position_ids'][0].detach().cpu().numpy(),
                        'mse_factor': self.mse_factor,
                        'xent_factor': self.xent_factor,}
         else:

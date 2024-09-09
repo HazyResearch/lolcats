@@ -120,6 +120,7 @@ def save_results_to_dict(results, results_dict, results_path, args):
             acc_stderr = np.std(mmlu_acc)   # stdev over samples
         except:
             acc = 0
+            acc_stderr = 0
         acc_norm = 0
         acc_norm_stderr = 0
     else:
