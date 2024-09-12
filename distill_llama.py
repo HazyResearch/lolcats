@@ -13,20 +13,20 @@ sys.path.append('./src')
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-from utils.setup import (
+from src.utils.setup import (
     init_wandb, seed_everything, flatten_config, get_run_name_from_args,
     update_config_from_args, update_model_config_from_args,
 )
-from utils.logging import print_config, print_header
+from src.utils.logging import print_config, print_header
 
 from dataloaders import load_data
 from trainer import get_trainer, get_optimizer, get_scheduler
 from finetune import prepare_finetune_configs, get_finetuner
 
-from model.pretrained import get_pretrained_loader
-from model.load_model import load_and_convert_attns, load_and_convert_finetune
-from model.convert_model import toggle_attention, remove_base_attention
-from model.utils import count_parameters
+from src.model.pretrained import get_pretrained_loader
+from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
+from src.model.convert_model import toggle_attention, remove_base_attention
+from src.model.utils import count_parameters
 
 
 def get_args():

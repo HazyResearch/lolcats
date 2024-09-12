@@ -383,8 +383,8 @@ def load_sharded_model_single_gpu(model, model_path=None, cfg=None, rank=None):
             return
         if rank == 0:
              print(f"loading model from model path: {model_path} ")
-    # reader = FileSystemReader(model_path)
-    keep_window_factors = False if 'no_distill' in model_path else True
+    
+    keep_window_factors = False if 'no_distill' in str(model_path) else True
     state_dict = {
         "model": get_trainable_weights(model, keep_window_factors=keep_window_factors)
     }
