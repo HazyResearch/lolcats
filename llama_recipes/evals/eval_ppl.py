@@ -8,6 +8,11 @@ import random
 import argparse  # ours
 from pkg_resources import packaging
 
+import sys 
+sys.path.append('./llama_recipes/')
+sys.path.append('./src')
+sys.path.append('./../src')
+
 import torch
 import torch.optim as optim
 
@@ -63,7 +68,7 @@ from src.model.load_model import (
     load_and_convert_attns,
     load_and_convert_finetune
 )
-from distill_llama import (
+from llama_recipes.distill_llama import (
     setup_wandb, get_args,  # get_run_name_from_checkpoint
     get_dataloaders, setup_fsdp_config
 )
