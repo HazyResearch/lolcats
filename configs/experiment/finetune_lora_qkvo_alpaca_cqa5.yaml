@@ -51,7 +51,7 @@ trainer: # HuggingFace Trainer-like arguments
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 10
+  eval_steps: 100
   max_eval_batches: null
 
 finetune:
