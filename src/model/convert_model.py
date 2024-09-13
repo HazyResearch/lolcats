@@ -137,6 +137,10 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention.linear_window_attention_sw_scale import LolcatsSlidingWindowAttention
         return partial(LolcatsSlidingWindowAttention, **kwargs)
 
+    elif attention_type == 'supra':
+        from .linear_attention.supra_attention import SUPRALinearAttention
+        return partial(SUPRALinearAttention, **kwargs)
+
     else:
         print(f'-> attention_type {attention_type} not handled... returning None')
         return None
@@ -153,14 +157,14 @@ def get_attention_cache(attention_type: str, past_key_values: any = None):
     elif 'llama_window_tk' in attention_type:
         from .linear_attention import LinearAttentionTKWindowCache
         return LinearAttentionTKWindowCache()
+
+    elif 'llama_window_sw' in attention_type:
+        from .linear_attention import LinearAttentionSlidingWindowCache
+        return LinearAttentionSlidingWindowCache()
     
     elif 'llama_window_sw_scale' in attention_type:
         from .linear_attention.linear_window_attention_sw_scale import LinearAttentionSlidingWindowCache
         return LinearAttentionSlidingWindowCache()
-
-    # elif 'llama_window_sw' in attention_type:
-    #     from .linear_window_attention_sw import LolcatsAttentionSlidingWindowCache
-    #     return LolcatsAttentionSlidingWindowCache()
 
     elif 'softmax' in attention_type:
         return past_key_values

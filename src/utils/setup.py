@@ -172,7 +172,8 @@ def update_model_config_from_args(model_config: DictConfig,
     """
     # Overall attention 
     for arg in ['attention_type', 'learned_kernel', 'tie_qk_kernels',
-                'train_qk', 'state_chunk_len', 'no_peft_grad_ckpt']:
+                'train_qk', 'state_chunk_len', 'no_peft_grad_ckpt', 
+                'window_size']:
         argval = getattr(args, arg, None)
         if argval is not None:
             setattr(model_config['attention'], arg, argval)

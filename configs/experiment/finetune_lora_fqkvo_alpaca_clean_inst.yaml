@@ -54,4 +54,4 @@ finetune:
     lora_alpha: 16 # 32
     lora_dropout: 0 # 0.05
     target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
-  trainable_weights: ['feature_map_q.mlp.layer', 'feature_map_k.mlp.layer']
+  trainable_weights: ['feature_map_q.mlp.layer', 'feature_map_k.mlp.layer', 'weight_factors']

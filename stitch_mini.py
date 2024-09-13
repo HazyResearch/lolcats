@@ -109,6 +109,7 @@ def get_args():
 
     parser.add_argument("--load_finetuned_loras", action='store_true', default=False)
     parser.add_argument("--e2e_finetune_config", type=str, default=None)
+    parser.add_argument("--load_checkpoint_only", action='store_true', default=False)
 
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
     parser.add_argument("--load_distill_checkpoint", type=str, default=None)

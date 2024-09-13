@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
     parser.add_argument("--train_qk", action='store_true', default=None)
     parser.add_argument("--state_chunk_len", type=int, default=None)
+    parser.add_argument("--window_size", type=int, default=None)
     
     # Training
     parser.add_argument("--lr", type=float, default=None)

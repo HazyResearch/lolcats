@@ -13,3 +13,9 @@ from .linear_window_attention_tk_long import (
 from .linear_window_attention_tk_bf16 import (
     LolcatsTKWindowAttentionBF16,
 )
+from .linear_window_attention_sw import (
+    LolcatsSlidingWindowAttention, LinearAttentionSlidingWindowCache
+)
+from .linear_window_attention_sw_long import (
+    LolcatsSlidingWindowLongAttention,
+)
