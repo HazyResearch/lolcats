@@ -379,7 +379,7 @@ def main():
     lm.model = model
     model = lm
 
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:
@@ -405,7 +405,7 @@ def main():
         del results['config']['device']
     except:
         pass
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
         mmlu_accs = []
         for k, v in results['results'].items():
             if args.task in k:

@@ -114,7 +114,7 @@ def save_results_to_dict(results, results_dict, results_path, args):
     # results are lm_eval results
     results_dict['task'].append(args.task)
     results_dict['shots'].append(args.num_shots)
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
         try:
             acc = sum(mmlu_accs) / len(mmlu_accs)
             acc_stderr = np.std(mmlu_acc)   # stdev over samples
@@ -205,7 +205,7 @@ def main():
             'max_batch_size': args.max_batch_size,
         })
 
-    if args.task in ['mmlu', 'mmlu_alpaca_v2', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:
@@ -228,7 +228,7 @@ def main():
         output_base_path=None,  # args.output_base_path,
     )
 
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
         mmlu_accs = []
         for k, v in results['results'].items():
             if args.task in k:

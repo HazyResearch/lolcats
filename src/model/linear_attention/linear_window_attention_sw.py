@@ -93,6 +93,7 @@ class LolcatsSlidingWindowAttention(LolcatsLinearAttention):
                  decode_window_size: int = None,
                  affine_attention_factors: bool = False,
                  init_window_factor: float = 0,
+                 train_window_factor: bool = True,
                  state_grad_enabled: bool = False,
                  **kwargs):
         self.window_size = window_size
@@ -101,15 +102,20 @@ class LolcatsSlidingWindowAttention(LolcatsLinearAttention):
         )
         self.window_kwargs = {'dimension': 2, 'size': window_size, 'step': 1}
         super().__init__(**kwargs)
-        self.attention_type = kwargs['attention_type']  #  'hedgehog_llama_window_tk'
+        self.attention_type = kwargs['attention_type']  #  'hedgehog_llama_window_sw'
         # Determine how we compute attentions
         self.quadratic_attention = hybrid_attention_quadratic
-        self.attention_type = kwargs['attention_type']  # 'hedgehog_long_llama_window_tk'
+        self.attention_type = kwargs['attention_type']  # 'hedgehog_long_llama_window_sw'
         # Learnable factor for combining attentions
         self.affine_attention_factors = affine_attention_factors
         device, dtype = self.q_proj.weight.device, self.q_proj.weight.dtype
-        self.window_factors = nn.Parameter(
-            init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype))
+        if train_window_factor:
+            self.window_factors = nn.Parameter(
+                init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype))
+        else:
+            self.register_buffer(
+                "window_factors", init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype)
+            )
         # Whether we use original flash attention 2 inference (use during attention transfer)
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
