@@ -173,9 +173,7 @@ class GeneralHendrycksTest(MultipleChoiceTask):
             return prompt
 
         keys = ["A", "B", "C", "D"]
-        choices = "".join(
-            [f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])]
-        )
+        choices = [f"{key}. {choice}" for key, choice in zip(keys, doc["choices"])]
         return {
             "query": format_example(doc, keys),
             "choices": choices,
