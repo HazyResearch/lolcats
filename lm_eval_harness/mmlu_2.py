@@ -5,53 +5,17 @@ Setup:
    e.g., 
    ```
    from . import mmlu
-   from . import mmlu_cloze  # added
+   from . import mmlu_2  # added
    ```
 3. Also change `<root_dir>/lm-evaluation-harness/lm_eval/tasks/__init__.py` to include mmlu_cloze tasks,
-   e.g., adding `**mmlu_cloze.create_all_tasks()` in the file
+   e.g., adding `**mmlu_2.create_all_tasks()` in the file
    ```
    **hendrycks_test.create_all_tasks(),
-   **mmlu_cloze.create_all_tasks(),
+   **mmlu_2.create_all_tasks(),
    ```
 --------------------------------------------------
 
-Adapted version of the below where instead of:
-```
-The following are multiple choice questions (with answers) about world religions.
-
-What is the Second Gem in Buddhism?
-A. The Dharma
-B. The Sangha
-C. The Buddha
-D. The Bodhisattva
-Answer: 
-```
-
-and picking among choices (lowest perplexity)
-```
-A
-B
-C
-D
-```
-
-We use the format:
-```
-The following are questions with answers about world religions.
-
-What is the Second Gem in Buddhism?
-```
-
-and picking among choices (lowest perplexity)
-```
-The Dharma
-The Sangha
-The Buddha
-The Bodhisattva
-```
-
-
---------------------------------------------------
+Format of MMLU where the full answer, e.g., "A. Answer Text" is used instead of just the letter, e.g., "A"
 
 Measuring Massive Multitask Language Understanding
 https://arxiv.org/pdf/2009.03300.pdf
@@ -145,7 +109,7 @@ def create_all_tasks():
         e.g. {hendrycksTest-abstract_algebra: Task, hendrycksTest-anatomy: Task}
     """
     # return {f"hendrycksTest-{sub}": create_task(sub) for sub in SUBJECTS}
-    return {f"mmlu_cloze-{sub}": create_task(sub) for sub in SUBJECTS}
+    return {f"mmlu_2-{sub}": create_task(sub) for sub in SUBJECTS}
 
 
 def create_task(subject):
@@ -186,34 +150,35 @@ class GeneralHendrycksTest(MultipleChoiceTask):
 
     def fewshot_context(self, doc, num_fewshot, **kwargs):
         subject = self.DATASET_NAME
-        # description = f"The following are multiple choice questions (with answers) about {self._format_subject(subject)}."
-        description = f"The following are questions with answers about {self._format_subject(subject)}."
+        description = f"The following are multiple choice questions (with answers) about {self._format_subject(subject)}."
         kwargs["description"] = description
         return super().fewshot_context(doc=doc, num_fewshot=num_fewshot, **kwargs)
 
     def _process_doc(self, doc):
         def format_example(doc, keys):
             """
-            <prompt> Answer
+            <prompt>
+            A. <choice1>
+            B. <choice2>
+            C. <choice3>
+            D. <choice4>
+            Answer:
             """
 
             question = doc["question"].strip()
-            # choices = "".join(
-            #     [f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])]
-            # )
-            # prompt = f"{question}\n{choices}Answer:"
-            prompt = f"{question}"
+            choices = "".join(
+                [f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])]
+            )
+            prompt = f"{question}\n{choices}Answer:"
             return prompt
 
-        keys = ["A", "B", "C", "D"]  # ignored
-
-        # print(f'query: {format_example(doc, keys)}')
-        # print(f'doc["choices"]: {doc["choices"]}')
-        # print(f'doc["answer"]: {doc["answer"]}')
-        
+        keys = ["A", "B", "C", "D"]
+        choices = "".join(
+            [f"{key}. {choice}\n" for key, choice in zip(keys, doc["choices"])]
+        )
         return {
             "query": format_example(doc, keys),
-            "choices": doc["choices"],
+            "choices": choices,
             "gold": doc["answer"],
         }
 
