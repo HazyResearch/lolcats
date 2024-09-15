@@ -69,6 +69,8 @@ def get_args():
     args = parser.parse_args()
 
     args.run_name = f'd={args.task}-ns={args.num_shots}'
+    if args.limit is not None:
+        args.run_name += f'-li={args.limit}'
     if args.model_type == 'lolcats_ckpt':
         if args.finetune_checkpoint_path is not None:
             args.run_name += f"-c={args.finetune_checkpoint_path.split('/')[-1]}"
