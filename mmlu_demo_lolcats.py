@@ -16,13 +16,13 @@ python mmlu_demo_lolcats.py \
 python mmlu_demo_lolcats.py \
 --attn_mlp_checkpoint_path ./checkpoints/distill_llama3_8b_lk_smd_wtk64_fd64_wo/dl-d=no_distill_alpaca_clean-m=distill_llama3_8b_lk_smd_wtk64_fd64_wo-f=finetune_lora_qkvo_alpaca_clean-s=0-nte=2-se=0-re=800-scl=1024-ws=64-lzi=1-nte=2-se=0-re=800_ft.pt \
 --finetune_checkpoint_path ./checkpoints/distill_llama3_8b_lk_smd_wtk64_fd64_wo/dl-d=no_distill_alpaca_clean-m=distill_llama3_8b_lk_smd_wtk64_fd64_wo-f=finetune_lora_qkvo_alpaca_clean-s=0-nte=2-se=0-re=800-scl=1024-ws=64-lzi=1-nte=2-se=0-re=800_ft.pt \
---num_shots 0 --split test --seed 0 --num_generations 5 --max_new_tokens 1
+--num_shots 5 --split test --seed 0 --num_generations 5 --max_new_tokens 1
 
 
 python mmlu_demo_lolcats.py \
 --attn_mlp_checkpoint_path ./checkpoints/distill_long_llama3_8b_lk_smd_wtk64_fd64_wo/dl-d=no_distill_alpaca_clean-m=distill_long_llama3_8b_lk_smd_wtk64_fd64_wo-f=finetune_long_lora_qkvo_alpaca_clean_8192_bs1-s=0-nte=2-se=0-re=800-scl=1024-ws=64-lzi=1-nte=2-se=0-re=800_ft.pt \
 --finetune_checkpoint_path ./checkpoints/distill_long_llama3_8b_lk_smd_wtk64_fd64_wo/dl-d=no_distill_alpaca_clean-m=distill_long_llama3_8b_lk_smd_wtk64_fd64_wo-f=finetune_long_lora_qkvo_alpaca_clean_8192_bs1-s=0-nte=2-se=0-re=800-scl=1024-ws=64-lzi=1-nte=2-se=0-re=800_ft.pt \
---num_shots 0 --split test --seed 0 --num_generations 5 --max_new_tokens 1
+--num_shots 5 --split test --seed 0 --num_generations 5 --max_new_tokens 1
 ```
 """
 from typing import Optional, List
