@@ -226,9 +226,9 @@ class LlamaLolcatsAttentionActual(nn.Module):
         window_factors = torch.nn.functional.sigmoid(window_factors)
         linear_factors = 1
 
-        if self.tp_rank == 0 and self.layer_idx == 0: print(f"{query.shape=}")
+        # if self.tp_rank == 0 and self.layer_idx == 0: print(f"{query.shape=}")
         seqlen = query.shape[2]
-        if self.tp_rank == 0 and self.layer_idx == 0: print(f"{seqlen=}")
+        # if self.tp_rank == 0 and self.layer_idx == 0: print(f"{seqlen=}")
         if seqlen == 1:
             return self.recurrent_attention(
                 query, key, f_q, f_k, 
@@ -269,24 +269,28 @@ class LlamaLolcatsAttentionActual(nn.Module):
         if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 6 -- bye prepare kv cache")
 
 
-    def _init_kv_cache(self, keys, values, f_k, f_q):
+    def _init_kv_cache(self, keys, values, f_k):
         if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 3 -- hello init kv cache")
         dtype = keys.dtype
         if self.tp_rank == 0 and self.layer_idx == 0: print(f"{f_k.shape=}")
         
         # decoding KV state (KV terms up to last window_size)
         decode_kv_state = torch.einsum('bhlf,bhld->bhfd', 
-            f_k[:, :, :-self.window_size].float(),
-            values[:, :, :-self.window_size].float()
+            f_k[:, :, :-self.window_size],
+            values[:, :, :-self.window_size]
         )
+
+        if self.tp_rank == 0 and self.layer_idx == 0: 
+            print(decode_kv_state[0][0])
         if self.tp_rank == 0 and self.layer_idx == 0: print(f"{decode_kv_state.shape=}")
+        if self.tp_rank == 0 and self.layer_idx == 0: print(f"{f_k.shape=}")
         # shape is b, h, 1, f; note the 1
         decode_k_state = f_k[:, :, :-self.window_size].sum(dim=-2,keepdim=True)
+        self.lolcats_cache.kv_state = decode_kv_state
+        self.lolcats_cache.k_state = decode_k_state
         if self.tp_rank == 0 and self.layer_idx == 0: print(f"{decode_k_state.shape=}")
 
         # update the cache
-        self.lolcats_cache.kv_state = decode_kv_state
-        self.lolcats_cache.k_state = decode_k_state
         kv_cache = torch.stack([
             keys[:, :, -self.window_size:, :].float(),
             values[:, :, -self.window_size:, :].float()
@@ -338,15 +342,12 @@ class LlamaLolcatsAttentionActual(nn.Module):
         y = (y / (sum_sm + sum_ln))
         # # logger.info(f"splattn {y.shape=}")
 
-        self._init_kv_cache(k, v, f_k, f_q)
+        self._init_kv_cache(k, v, f_k)
         return y # attention weights only for the last chunk
 
-    
-    def _update_kv_cache(self, keys, values, fmap_q, fmap_k):
-        dtype = torch.float32
 
-        if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 1 - hello update kv cache")
-        
+    def _update_kv_cache(self, keys, values, fmap_k):
+        # if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 1 - hello update kv cache")
         # get state from before
         kv_state = self.lolcats_cache.kv_state
         k_state  = self.lolcats_cache.k_state
@@ -354,16 +355,23 @@ class LlamaLolcatsAttentionActual(nn.Module):
         k_cache = kv_cache_swa[:, 0]
         v_cache = kv_cache_swa[:, 1]
 
+        dtype = kv_state.dtype
+
         # update the linear attention states
         # since we ignore the diag blocks, just grab last tokens of kv cache
         cur_seq_len = k_cache.shape[-2]
         if self.tp_rank == 0 and self.layer_idx == 0: print(f"{cur_seq_len=}")
         if cur_seq_len >= self.window_size:
             if self.tp_rank == 0 and self.layer_idx == 0: print(f"Updating the kv_state and k_state...")
+            # if self.tp_rank == 0 and self.layer_idx == 0: 
+            #     print(f"{fmap_k.layer=}")
+            #     print(f"{k_cache[0, 0, 0, 0:8]=}")
+            #     print(f"{k_cache[:, :, :1, :]=}")
+            #     print(f"{fmap_k(k_cache[:, :, :1, :])=}")
             k_state = fmap_k(k_cache[:, :, :1, :]) 
             v_state = v_cache[:, :, :1, :]
             kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
-            self.lolcats_cache.kv_state += kv_state
+            self.lolcats_cache.kv_state += kv_state.to(kv_state.dtype) 
             self.lolcats_cache.k_state += k_state
 
         # update swa states
@@ -378,8 +386,8 @@ class LlamaLolcatsAttentionActual(nn.Module):
         kv_cache_swa = torch.stack([k_cache, v_cache], dim=1)
         self.lolcats_cache.kv_cache = kv_cache_swa
 
-        if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 2 - bye update kv cache")
-        return kv_state, k_state, k_cache, v_cache 
+        # if self.tp_rank == 0 and self.layer_idx == 0: print("heyo 2 - bye update kv cache")
+        return self.lolcats_cache.kv_state, self.lolcats_cache.k_state, k_cache, v_cache 
 
 
     def recurrent_attention(
@@ -395,8 +403,8 @@ class LlamaLolcatsAttentionActual(nn.Module):
         eps: float = 1e-12, mask_value: float=-1e8
     ):
         dtype = torch.float32
-        if self.tp_rank == 0 and self.layer_idx == 0: print(f"hello recurrent step!")
-        kv_state, k_state, k_cache, v_cache  = self._update_kv_cache(k, v, fmap_q, fmap_k)
+        # if self.tp_rank == 0 and self.layer_idx == 0: print(f"hello recurrent step!")
+        kv_state, k_state, k_cache, v_cache  = self._update_kv_cache(k, v, fmap_k)
         
         # Softmax attention terms
         a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k_cache.float()) * (k.shape[-1] ** -0.5)
@@ -409,11 +417,15 @@ class LlamaLolcatsAttentionActual(nn.Module):
         f_q = fmap_q(q)
         y_ln = linear_factor * torch.einsum('bhlf,bhfd->bhld', f_q.float(), kv_state.float())
         sum_ln = linear_factor * torch.einsum('bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
+        
+        # if self.tp_rank == 0 and self.layer_idx == 0:
+        #     print(f"{y_ln[0][0][0][:4]=}")
+        #     print(f"{sum_ln[0][0]=}")
 
         y = y_sm + y_ln 
         attn_output = (y / (sum_sm + sum_ln)).to(q.dtype)
 
-        if self.tp_rank == 0 and self.layer_idx == 0: print(f"bye recurrent step!")
+        # if self.tp_rank == 0 and self.layer_idx == 0: print(f"bye recurrent step!")
         return attn_output
 
 
@@ -443,6 +455,10 @@ class LlamaLolcatsAttention(LlamaAttention):
         self.feature_dim = _feature_dim
         self.window_size = 64
 
+        tp_rank = get_tensor_model_parallel_rank()
+        self.tp_rank = tp_rank
+        self.layer_idx = layer_idx
+
         self.feature_map_q = FeatureMap(**_feature_map_kwargs)
         self.feature_map_k = FeatureMap(**_feature_map_kwargs)
         self.window_factors = nn.Parameter(
@@ -452,11 +468,21 @@ class LlamaLolcatsAttention(LlamaAttention):
         tp_rank = get_tensor_model_parallel_rank()
         tp_size = get_tensor_model_parallel_world_size()
 
+        # print(f"{tp_size=}")
+        # assert 0, "ahhhh window factors"
+
         if tp_size > 1:
 
             num_heads_per_rank = self.num_heads
             start_idx = tp_rank * num_heads_per_rank
             end_idx = start_idx + num_heads_per_rank
+
+            if self.layer_idx == 0 and tp_rank == 0:
+                print(loaded_weight)
+
+            if self.layer_idx < 2: 
+                print(f"{num_heads_per_rank=}")
+                print(f"{tp_rank=}; {loaded_weight.shape=}; {start_idx=}; {end_idx=}")
 
             sharded_weight = loaded_weight[:, start_idx:end_idx, :, :]
         
@@ -474,7 +500,8 @@ class LlamaLolcatsAttention(LlamaAttention):
         tp_rank = get_tensor_model_parallel_rank()
         tp_size = get_tensor_model_parallel_world_size()
 
-        # print(f"{tp_size}")
+        # print(f"{tp_size=}")
+        # assert 0, "ahhhh feature map q"
 
         if tp_size > 1:
         
@@ -500,6 +527,9 @@ class LlamaLolcatsAttention(LlamaAttention):
     def load_feature_map_k(self, loaded_weight: torch.Tensor):
         tp_rank = get_tensor_model_parallel_rank()
         tp_size = get_tensor_model_parallel_world_size()
+
+        # print(f"{tp_size=}")
+        # assert 0, "ahhhh"
 
         if tp_size > 1:
         
@@ -671,6 +701,9 @@ class LlamaLolcatsForCausalLM(LlamaForCausalLM):
         softmax_attentions = getattr(self.config, 'softmax_attentions', [])
         print(f"{softmax_attentions=}")
 
+        tp_rank = get_tensor_model_parallel_rank()
+        self.tp_rank = tp_rank
+
         for i in range(len(self.model.layers)):
             if i in softmax_attentions: 
                 print(f"Using Lora Llama Attention at Layer {i}")
@@ -704,15 +737,20 @@ class LlamaLolcatsForCausalLM(LlamaForCausalLM):
         super().load_weights(weights)
 
         # model_size = 8
+        # FINETUNE_PATH = '/home/rahul/code/lolcats/dl-d=distill_alpaca_clean_xent0_mse1000_lr1e-2-m=distill_llama3_1_8b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_alpaca_clean-s=0-ms=2500-se=0-re=100-lzi=1-bs=1-gas=8-nte=2-ms=2500-se=0-re=100_ft.pt'
+        # MLP_PATH = '/home/rahul/code/lolcats/dl-d=distill_alpaca_clean_xent0_mse1000_lr1e-2-m=distill_llama3_1_8b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_alpaca_clean-s=0-ms=2500-se=0-re=100-lzi=1_distill.pt'
+        # # merge the MLP and FINETUNE weights as adapter weights
+        # adapter_weights = torch.load(FINETUNE_PATH, weights_only=True)
+        # adapter_weights.update(torch.load(MLP_PATH, weights_only=True))
+        # print(adapter_weights.keys())
+        # # only keep any weight with 'feature' or 'window' or 'lora' in the key
+        # adapter_weights = {k: v for k, v in adapter_weights.items() if 'feature' in k or 'window' in k or 'lora' in k}
+
         model_size = 70
-
-        # PATH = f'/data/rahul/checkpoints/{model_size}b.pt'
+        PATH = f'/data/rahul/checkpoints/{model_size}b.pt'
         PATH = f'/home/rahul/code/lolcats/ckpt_lora-dl-d=distill_redpajama_xent1_mse1000_lr1e-2-m=distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_redpajama-dcs=512-se=0-re=4-lzi=1-dcs=512-se=0-re=4.pt'
-
-        print(f"PATH: {PATH}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
+        print(f"PATH INFERENCE: {PATH}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         adapter_weights_path = os.getenv("LOLCATS_ADAPTER_PATH", PATH)
-
         adapter_weights = torch.load(adapter_weights_path, weights_only=True)
 
         adapter_weights_copy = OrderedDict({})
@@ -727,28 +765,28 @@ class LlamaLolcatsForCausalLM(LlamaForCausalLM):
         print("\n")
         num_layers = len(self.model.layers)
         for layer_idx, layer in enumerate(self.model.layers):
-            # if layer_idx == 0:
-            #     print(f'Weight factors before checkpoint load, {layer.self_attn.window_factors.shape}, {layer.self_attn.window_factors.flatten()}')
+            if layer_idx == 0:
+                print(f'Weight factors before checkpoint load {self.tp_rank=}, {layer.self_attn.window_factors.shape}, {layer.self_attn.window_factors.flatten()}')
 
             window_factors_key = f'layers.{layer_idx}.self_attn.window_factors'
             if window_factors_key in adapter_weights:
                 layer.self_attn.load_window_factors(adapter_weights[window_factors_key])
                 updated_keys.append(window_factors_key)
 
-                # if layer_idx == 0:
-                #     print(f'Weight factors after checkpoint load, {layer.self_attn.window_factors.shape}, {layer.self_attn.window_factors.flatten()}')
+                if layer_idx == 0:
+                    print(f'Weight factors after checkpoint load {self.tp_rank=}, {layer.self_attn.window_factors.shape}, {layer.self_attn.window_factors.flatten()}')
 
             fm_q_key = f'layers.{layer_idx}.self_attn.feature_map_q.mlp.layer'
             if fm_q_key in adapter_weights:
-                if layer_idx in [0, num_layers-1]:
-                    print("\n")
-                    print(f'FMAP Q before checkpoint load, {layer.self_attn.feature_map_q.layer.shape}, {layer.self_attn.feature_map_q.layer[0,0,:4]}')
+                # if layer_idx in [0, num_layers-1]:
+                #     # print("\n")
+                #     # print(f'FMAP Q before checkpoint load {self.tp_rank=}, {layer.self_attn.feature_map_q.layer.shape}, {layer.self_attn.feature_map_q.layer[0,0,:4]}')
 
                 layer.self_attn.load_feature_map_q(adapter_weights[fm_q_key])
                 updated_keys.append(fm_q_key)
 
-                if layer_idx in [0, num_layers-1]:
-                    print(f'FMAP Q after checkpoint load; {layer.self_attn.feature_map_q.layer.shape},{layer.self_attn.feature_map_q.layer[0,0,:4]}')
+                # if layer_idx in [0, num_layers-1]:
+                    # print(f'FMAP Q after checkpoint load; {layer.self_attn.feature_map_q.layer.shape},{layer.self_attn.feature_map_q.layer[0,0,:4]}')
 
             fm_k_key = f'layers.{layer_idx}.self_attn.feature_map_k.mlp.layer'
             if fm_k_key in adapter_weights:
@@ -778,17 +816,17 @@ class LlamaLolcatsForCausalLM(LlamaForCausalLM):
                     # print(f'layer {layer_idx} proj {proj} delta_AB', delta_AB.shape)
                     
                     if proj == 'o_proj':
-                        if layer_idx in [0, num_layers-1]:
-                            print("\n")
-                            print(f'Layer {layer_idx} {proj} weight before checkpoint load, {layer.self_attn.o_proj.weight.shape}, {layer.self_attn.o_proj.weight[0,:4]}')
+                        # if layer_idx in [0, num_layers-1]:
+                        #     print("\n")
+                        #     print(f'Layer {layer_idx} {proj} weight before checkpoint load, {layer.self_attn.o_proj.weight.shape}, {layer.self_attn.o_proj.weight[0,:4]}')
 
                         layer.self_attn.merge_lora_to_o_parallel(delta_AB)
 
-                        if layer_idx in [0, num_layers-1]:
-                            print(f'Layer {layer_idx} {proj} weight after checkpoint load, {layer.self_attn.o_proj.weight.shape}, {layer.self_attn.o_proj.weight[0,:4]}')
+                        # if layer_idx in [0, num_layers-1]:
+                        #     print(f'Layer {layer_idx} {proj} weight after checkpoint load, {layer.self_attn.o_proj.weight.shape}, {layer.self_attn.o_proj.weight[0,:4]}')
                     else:
-                        if layer_idx in [0, num_layers-1] and proj in ['q_proj']:
-                            print(f'Layer {layer_idx} {proj} weight before checkpoint load, {layer.self_attn.qkv_proj.weight.shape}, {layer.self_attn.qkv_proj.weight[0,:4]}')
+                        # if layer_idx in [0, num_layers-1] and proj in ['q_proj']:
+                        #     print(f'Layer {layer_idx} {proj} weight before checkpoint load, {layer.self_attn.qkv_proj.weight.shape}, {layer.self_attn.qkv_proj.weight[0,:4]}')
 
                         layer.self_attn.merge_lora_to_qkv_parallel(
                             delta_AB,
@@ -796,8 +834,8 @@ class LlamaLolcatsForCausalLM(LlamaForCausalLM):
                             total_num_heads=layer.self_attn.num_heads,
                             total_num_kv_heads=layer.self_attn.num_kv_heads,head_size=layer.self_attn.head_dim)
 
-                        if layer_idx in [0, num_layers-1] and proj in ['q_proj']:
-                            print(f'Layer {layer_idx} {proj} weight after checkpoint load, {layer.self_attn.qkv_proj.weight.shape}, {layer.self_attn.qkv_proj.weight[0,:4]}')
+                        # if layer_idx in [0, num_layers-1] and proj in ['q_proj']:
+                        #     print(f'Layer {layer_idx} {proj} weight after checkpoint load, {layer.self_attn.qkv_proj.weight.shape}, {layer.self_attn.qkv_proj.weight[0,:4]}')
                     updated_keys.append(lora_A_key)
                     updated_keys.append(lora_B_key)
 
