@@ -226,6 +226,7 @@ def save_model_and_optimizer_sharded(model, rank, cfg,optim=None):
         print(
             f"Checkpoint Time = {t1-t0:.4f}\n"
         )
+        get_date_of_run()
     return save_dir
 
 
@@ -384,17 +385,15 @@ def load_sharded_model_single_gpu(model, model_path=None, cfg=None, rank=None):
         if rank == 0:
              print(f"loading model from model path: {model_path} ")
     # reader = FileSystemReader(model_path)
-    keep_window_factors = False if 'no_distill' in model_path else True
-    state_dict = {
-        "model": get_trainable_weights(model, keep_window_factors=keep_window_factors)
-    }
+    # keep_window_factors = False if 'no_distill' in model_path else True
+    keep_window_factors = True
+    state_dict = {"model": get_trainable_weights(model, keep_window_factors=keep_window_factors)}
+    print_header('*** (Trainable) keys in state_dict ***')
     for k, v in state_dict['model'].items():
         print(k)
-    dist_cp.load_state_dict(
-        state_dict=state_dict,
-        storage_reader= FileSystemReader(model_path),
-        no_dist=True,
-    )
+
+    # breakpoint()
+    dist_cp.load_state_dict(state_dict=state_dict, storage_reader= FileSystemReader(model_path), no_dist=True,)
 
     model = load_trainable_weights(model, state_dict, rank=0)
     print(f"Sharded state checkpoint loaded from {model_path}")

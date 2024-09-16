@@ -179,7 +179,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
 
     if train_config.save_metrics:
         _dt = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        metrics_filename = f"{train_config.output_dir}/metrics_data_{local_rank}-{_dt}.json"
+        metrics_filename = f"{train_config.output_dir}/metrics_data_{local_rank}-{_dt}.json".replace('//', '/')
         train_step_loss = []
         val_step_loss = []
         # print(f'-> Saving metrics to {metrics_filename}')

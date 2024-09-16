@@ -11,7 +11,7 @@ dataset:
     chat_template: llama-3
     chunk_size: 1024  # sequence length for distilling
     seed: 42
-    cache_dir: '/scr-ssd/mzhang/data/long-llm/long-llm/'  # Change this to where you want to save
+    cache_dir: "/home/simarora/code/lolcats/data/rp"  # Change this to where you want to save
   pretrained_model_config:
     pretrained_model_name_or_path: 'meta-llama/Meta-Llama-3-8B'
     cache_dir: '/scr-ssd/mzhang/models/llama3'  # Set this to where you want to save checkpoint weights

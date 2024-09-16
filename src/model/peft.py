@@ -39,6 +39,12 @@ def create_peft_config(model: Module,
         except Exception as e:
             print(e)
             target_modules = []
+
+        if 'layers_to_ignore' in peft_config:
+            peft_config['kwargs']['layers_to_transform'] = [
+                i for i in range(len(model.model.layers))
+                if i not in peft_config['layers_to_ignore']
+            ]
             
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,

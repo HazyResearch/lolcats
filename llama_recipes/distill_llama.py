@@ -266,7 +266,7 @@ def get_dataloaders(train_config, tokenizer, no_shuffle_train: bool = False):
     return train_loader, eval_loader, train_config
 
 
-def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
+def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune', output_dir: str = None):
     """
     Hacky arguments for llama-recipes training function
     """
@@ -291,11 +291,11 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
         for attr in ['save_model', 'run_validation', 'use_fp16', 'save_optimizer',
                      'gradient_clipping', 'gradient_clipping_threshold']:
             setattr(config, attr, getattr(config.fsdp, attr))
-    config.output_dir = args.checkpoint_dir
+    config.output_dir = args.checkpoint_dir if output_dir is None else output_dir
     config.save_metrics = not args.no_wandb
-    config.num_epochs = config.trainer.num_train_epochs
+    config.num_epochs = getattr(config.trainer, 'num_train_epochs', None)
     config.num_train_steps = getattr(args, 'num_train_steps', None)  # exit training loop early for debugging
-    config.eval_steps = config.trainer.eval_steps  # how many gradient updates before evaluating
+    config.eval_steps = getattr(config.trainer, 'eval_steps', None) # how many gradient updates before evaluating
     return config
 
 

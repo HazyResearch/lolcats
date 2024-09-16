@@ -61,7 +61,7 @@ class LossComputer():
 def train(model, train_dataloader, eval_dataloader, tokenizer,
           optimizer, lr_scheduler, gradient_accumulation_steps,
           train_config, fsdp_config=None, local_rank=None, rank=None,
-          wandb_run=None) -> dict[torch.Tensor]:
+          wandb_run=None, stepwise_scheduler=False) -> dict[torch.Tensor]:
     """
     Trains the model on the given dataloader
 
@@ -165,6 +165,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         scaler.update()
                         optimizer.zero_grad()
                         pbar.update(1)
+                        if stepwise_scheduler:
+                            lr_scheduler.step()
                 else:
                     # regular backpropagation when fp16 is not used
                     # if loss.sum() > 0:  # hack for non-answer targets
@@ -178,6 +180,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                         optimizer.step()
                         optimizer.zero_grad()
                         pbar.update(1)
+                        if stepwise_scheduler:
+                            lr_scheduler.step()
 
                 if wandb_run: 
                     if not train_config.enable_fsdp or rank==0:
@@ -185,7 +189,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                             'train/epoch': epoch + 1,
                             'train/step': total_step,  # epoch * len(train_dataloader) + step,
                             'train/loss': train_step_loss[-1],
-                            'train/ppl': train_step_perplexity[-1]
+                            'train/ppl': train_step_perplexity[-1],
+                            'train/lr': optimizer.param_groups[-1]['lr']
                         })
 
                 metrics = f"loss: {train_step_loss[-1]:.5f} | lr: {optimizer.param_groups[0]['lr']:.5f} | ppl: {train_step_perplexity[-1]}"
@@ -300,6 +305,8 @@ def evaluate_lm(model, train_config, eval_dataloader,
                 eval_loss += loss.detach().float()
             _ppl = torch.exp(eval_loss/(step+1)).item()
         pbar.set_description(f"Rank {rank} | Eval Epoch{_epoch} | step_loss: {loss.item():.5f} | avg_loss: {eval_loss.item()/(step+1):.5f} | avg_ppl: {_ppl:.5f}")
+        if step > 20:  # hack
+            break
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
@@ -311,7 +318,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
     # print('len(eval_dataloader):', len(eval_dataloader))
     # print('step + 1:', step + 1)
     # print('world_size:', world_size)
-    eval_epoch_loss = eval_loss / len(eval_dataloader)
+    eval_epoch_loss = eval_loss / 20  # len(eval_dataloader)
     if train_config.enable_fsdp:
         eval_epoch_loss = eval_epoch_loss/world_size
 

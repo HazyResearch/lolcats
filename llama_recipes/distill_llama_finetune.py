@@ -413,6 +413,7 @@ def main():
         local_rank if args.enable_fsdp else None,
         rank if args.enable_fsdp else None,
         wandb_run,
+        stepwise_scheduler=finetune_config.lr_scheduler.lr_scheduler_type != 'reduce_lr_on_plateau',
     )
     # if not args.enable_fsdp or rank==0:
     #     for k,v in results.items():
