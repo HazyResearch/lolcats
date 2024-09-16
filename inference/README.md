@@ -56,6 +56,8 @@ git checkout b281b092
 pip install -e .[api]
 ```
 
+Note that if ```datasets.load_datasets``` gives an issue, it helps to ```pip install -U datasets```.
+
 Launch the evaluation commands on node 1 (the head node of the ray cluster).
 ```bash
 lm_eval --model local-completions --tasks piqa,hellaswag,winogrande,arc_challenge,arc_easy --model_args model='/path/to/hf/model/Meta-Llama-3.1-405B',base_url=http://localhost:8000/v1/completions,num_concurrent=1,max_retries=3,tokenized_requests=False --batch_size 1 --output save/
