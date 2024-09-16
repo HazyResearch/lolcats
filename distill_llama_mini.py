@@ -5,7 +5,7 @@ This lets us linearize big models in a decentralized manner without interconnect
 Just take a layer and train.
 
 (screen -r h3)
-python distill_llama_mini.py \
+python distill_llama_mini_io.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --distill_config distill_alpaca_clean_xent1_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean_mini_xent1_mse1000 \

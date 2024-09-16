@@ -96,6 +96,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                  decode_window_size: int = None,
                  affine_attention_factors: bool = False,
                  init_window_factor: float = 0,
+                 train_window_factor: bool = True,
                  state_grad_enabled: bool = False,
                  **kwargs):
         self.window_size = window_size
@@ -111,8 +112,13 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         # Learnable factor for combining attentions
         self.affine_attention_factors = affine_attention_factors
         device, dtype = self.q_proj.weight.device, self.q_proj.weight.dtype
-        self.window_factors = nn.Parameter(
-            init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype))
+        if train_window_factor:
+            self.window_factors = nn.Parameter(
+                init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype))
+        else:
+            self.register_buffer(
+                "window_factors", init_window_factor * torch.ones(1, self.num_heads, 1, 1, device=device, dtype=dtype)
+            )
         # Whether we use original flash attention 2 inference (use during attention transfer)
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
@@ -168,7 +174,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                     _kv = past_key_value.update_for_decoding(k, v, self.layer_idx,
                                                              self.feature_map_k,
                                                              dtype=q.dtype)
-                    k_cache, v_cache, kv_state, k_state = _kv
+                    k_cache, v_cache, f_kv_state, f_k_state = _kv
 
                     # Sliding window + linear attention decode
                     window_factors = F.sigmoid(self.window_factors)
@@ -182,9 +188,9 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
 
                     # Combine with linear attention terms
                     y_true = (torch.einsum('bhmn,bhnd->bhmd', a_sm, v_cache.float())
-                              + linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float()))
+                              + linear_factors * torch.einsum('bhlf,bhfd->bhld', f_q.float(), f_kv_state.float()))
                     sum_ln = linear_factors * torch.einsum(
-                        'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
+                        'bhld,bhnd->bhl', f_q.float(), f_k_state.float())[..., None]
                     y_true = (y_true / (sum_sm + sum_ln)).to(q.dtype) 
 
                 else:  # Stateful training
@@ -314,21 +320,19 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
         with torch.no_grad():
             k_cache = self.k_cache[layer_idx]
             v_cache = self.v_cache[layer_idx]
-            k_state = feature_map_k(k_cache[:, :, :1, :])
-            v_state = v_cache[:, :, :1, :]
-            # try:
-            #     k_state = feature_map_k(k_cache[:, :, :1, :])
-            # except Exception as e:
-            #     print(f'layer_idx:', layer_idx)
-            #     print(f'k_cache.shape:', k_cache.shape)
-            #     print(f'v_cache.shape:', v_cache.shape)
-            #     breakpoint()
-            kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
-            self.decode_kv_states[layer_idx] += kv_state
-            self.decode_k_states[layer_idx] += k_state
-            
-            self.k_cache[layer_idx] = torch.cat([k_cache[:, :, 1:, :], keys], dim=-2)
-            self.v_cache[layer_idx] = torch.cat([v_cache[:, :, 1:, :], values], dim=-2)
+
+            if k_cache.shape[-2] < self.window_size:  # build window-size cache
+                self.k_cache[layer_idx] = torch.cat([k_cache, keys], dim=-2)
+                self.v_cache[layer_idx] = torch.cat([v_cache, values], dim=-2)
+            else:
+                k_state = feature_map_k(k_cache[:, :, :1, :])
+                v_state = v_cache[:, :, :1, :]
+                kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
+                self.decode_kv_states[layer_idx] += kv_state
+                self.decode_k_states[layer_idx] += k_state
+                
+                self.k_cache[layer_idx] = torch.cat([k_cache[:, :, 1:, :], keys], dim=-2)
+                self.v_cache[layer_idx] = torch.cat([v_cache[:, :, 1:, :], values], dim=-2)
             
             if layer_idx == 0:
                 self._seen_tokens += keys.shape[-2]

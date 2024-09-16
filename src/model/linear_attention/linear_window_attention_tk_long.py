@@ -83,7 +83,7 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
                 _kv = past_key_value.update_for_decoding(k, v, self.layer_idx,
                                                          self.feature_map_k,
                                                          dtype=q.dtype)
-                k_cache, v_cache, kv_state, k_state = _kv
+                k_cache, v_cache, f_kv_state, f_k_state = _kv
 
                 # Sliding window + linear attention decode
                 window_factors = F.sigmoid(self.window_factors)
@@ -96,8 +96,8 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
                 sum_sm = a_sm.sum(dim=-1, keepdim=True)
 
                 y_pred = (torch.einsum('bhmn,bhnd->bhmd', a_sm, v_cache.float())
-                          + linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float()))
-                sum_ln = linear_factors * torch.einsum('bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
+                          + linear_factors * torch.einsum('bhlf,bhfd->bhld', f_q.float(), f_kv_state.float()))
+                sum_ln = linear_factors * torch.einsum('bhlf,bhnf->bhl', f_q.float(), f_k_state.float())[..., None]
                 y_pred = (y_pred / (sum_sm + sum_ln)).to(q.dtype) 
 
             else:  # Stateful training
@@ -121,8 +121,8 @@ class LolcatsTKWindowLongAttention(LolcatsTKWindowAttention):
                 #                       fmap_key_states=f_k.detach(),
                 #                       accumulate_in_fp32=True)
                 past_key_value.update(k, v, self.layer_idx,
-                                        fmap_key_states=f_k,
-                                        accumulate_in_fp32=True)
+                                      fmap_key_states=f_k,
+                                      accumulate_in_fp32=True)
 
         # Concatenate heads and apply output projection
         _y_pred = y_pred.transpose(1, 2).contiguous()

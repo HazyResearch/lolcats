@@ -69,6 +69,8 @@ def get_args():
     args = parser.parse_args()
 
     args.run_name = f'd={args.task}-ns={args.num_shots}'
+    if args.limit is not None:
+        args.run_name += f'-li={args.limit}'
     if args.model_type == 'lolcats_ckpt':
         if args.finetune_checkpoint_path is not None:
             args.run_name += f"-c={args.finetune_checkpoint_path.split('/')[-1]}"
@@ -114,7 +116,7 @@ def save_results_to_dict(results, results_dict, results_path, args):
     # results are lm_eval results
     results_dict['task'].append(args.task)
     results_dict['shots'].append(args.num_shots)
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze', 'mmlu_2']:
         try:
             acc = sum(mmlu_accs) / len(mmlu_accs)
             acc_stderr = np.std(mmlu_acc)   # stdev over samples
@@ -146,15 +148,19 @@ def main():
     from lm_eval import evaluator
     
     args = get_args()
-    # Save locally
-    results_dict = create_new_save_dict(RESULTS_PATH)
-    if 'dl-d=drxmldl8lswfwflqr000_lzi=1_distill_' in args.finetune_checkpoint_path:
-        finetune_flag = args.finetune_checkpoint_path.split('dl-d=drxmldl8lswfwflqr000_lzi=1_distill_')[-1].split('-')[0]
-        _RESULTS_PATH = RESULTS_PATH.replace('.csv', f'-{finetune_flag}.csv')
-        _results_dict = create_new_save_dict(_RESULTS_PATH)
-    else:
-        _RESULTS_PATH = None
-        _results_dict = None
+
+    try:
+        # Save locally
+        results_dict = create_new_save_dict(RESULTS_PATH)
+        if 'dl-d=drxmldl8lswfwflqr000_lzi=1_distill_' in args.finetune_checkpoint_path:
+            finetune_flag = args.finetune_checkpoint_path.split('dl-d=drxmldl8lswfwflqr000_lzi=1_distill_')[-1].split('-')[0]
+            _RESULTS_PATH = RESULTS_PATH.replace('.csv', f'-{finetune_flag}.csv')
+            _results_dict = create_new_save_dict(_RESULTS_PATH)
+        else:
+            _RESULTS_PATH = None
+            _results_dict = None
+    except:
+        pass
     
     if args.model_type == 'lolcats_ckpt':  # load hedgehog model
         model, model_config, tokenizer = load_model_from_checkpoint(
@@ -205,7 +211,7 @@ def main():
             'max_batch_size': args.max_batch_size,
         })
 
-    if args.task in ['mmlu', 'mmlu_alpaca_v2', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze', 'mmlu_2']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:
@@ -228,7 +234,7 @@ def main():
         output_base_path=None,  # args.output_base_path,
     )
 
-    if args.task in ['mmlu', 'hendrycksTest']:
+    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze', 'mmlu_2']:
         mmlu_accs = []
         for k, v in results['results'].items():
             if args.task in k:
