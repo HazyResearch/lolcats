@@ -22,13 +22,7 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
 )
 
 
-system_prompt = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
-### Instruction:
-{prompt}
-
-### Response:
-"""
+system_prompt = """{prompt}"""
 
 
 def get_args():
@@ -43,7 +37,7 @@ def get_args():
     parser.add_argument("--num_generations", type=int, default=1)
     parser.add_argument("--top_k", type=int, default=50)
     parser.add_argument("--top_p", type=float, default=0.95)
-    parser.add_argument("--max_new_tokens", type=int, default=1024)
+    parser.add_argument("--max_new_tokens", type=int, default=10) 
 
     # Miscellaneous
     parser.add_argument("--benchmark", action='store_true', default=False)
@@ -325,6 +319,7 @@ def main():
                                                  skip_prompt=True,)
     
         with torch.no_grad():
+            breakpoint()
             model_input = tokenizer(all_prompts, return_tensors="pt").to(model.device)
 
             if args.benchmark:
@@ -332,9 +327,9 @@ def main():
                 start_time = time.time()
             model_output = model.generate(**model_input, use_cache=True, 
                                           max_new_tokens=args.max_new_tokens, 
-                                          do_sample=True,
-                                          top_k=args.top_k,
-                                          top_p=args.top_p,
+                                          do_sample=False,
+                                        #   top_k=args.top_k,
+                                        #   top_p=args.top_p,
                                           num_return_sequences=1,
                                           pad_token_id=tokenizer.eos_token_id,
                                           streamer=streamer)

@@ -83,6 +83,12 @@ class OurTrainer(DefaultTrainer):
     
         inputs = {k: v.cpu() for k, v in inputs.items()}  # save gpu memory
 
+        # Initialize variables to track average magnitudes
+        avg_attn_mag_pred, avg_attn_mag_true = 0, 0 
+        avg_output_mag_pred, avg_output_mag_true = 0, 0
+        attention_count = 0
+        output_count = 0
+
         loss_mse = 0
         loss_xent = 0
         skip_xent_mem_save = False
@@ -99,6 +105,11 @@ class OurTrainer(DefaultTrainer):
                     _a_pred = _a_pred.contiguous().view(-1, k_len)
                     _a_true = _a_true.contiguous().view(-1, k_len)
                     loss_xent += self.criterion_xent(_a_pred, _a_true)
+
+                    # Calculate and accumulate average magnitude for attention
+                    avg_attn_mag_pred += torch.abs(_a_pred).mean().item()
+                    avg_attn_mag_true += torch.abs(_a_true).mean().item()
+                    attention_count += 1
                 else:
                     skip_xent_mem_save = True
             else:
@@ -107,8 +118,19 @@ class OurTrainer(DefaultTrainer):
             if self.mse_factor > 0:
                 loss_mse += self.criterion_mse(y_pred[layer_idx], y_true[layer_idx])
 
+                # Calculate and accumulate average magnitude for outputs
+                avg_output_mag_pred += torch.abs(y_pred[layer_idx]).mean().item()
+                avg_output_mag_true += torch.abs(y_true[layer_idx]).mean().item()
+                output_count += 1
+
         loss_xent = loss_xent / len(y_pred) * self.xent_factor
         loss_mse = loss_mse / len(y_pred) * self.mse_factor
+
+        # Calculate final average magnitudes
+        avg_attn_mag_pred = avg_attn_mag_pred / attention_count if attention_count > 0 else 0
+        avg_output_mag_pred = avg_output_mag_pred / output_count if output_count > 0 else 0
+        avg_attn_mag_true = avg_attn_mag_true / attention_count if attention_count > 0 else 0
+        avg_output_mag_true = avg_output_mag_true / output_count if output_count > 0 else 0
         
         if skip_xent_mem_save:
             loss = loss_mse
@@ -119,7 +141,12 @@ class OurTrainer(DefaultTrainer):
                    'loss_mse': loss_mse.item() if self.mse_factor > 0 else 0, 
                    'mse_factor': self.mse_factor, 
                    'xent_factor': self.xent_factor,
-                   'layer_idx': self.layer_idx}
+                   'layer_idx': self.layer_idx,
+                   'avg_attn_mag_pred': avg_attn_mag_pred,
+                   'avg_output_mag_pred': avg_output_mag_pred,
+                   'avg_attn_mag_true': avg_attn_mag_true,
+                   'avg_output_mag_true': avg_output_mag_true,
+                }
         return loss, outputs
     
 

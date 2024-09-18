@@ -21,6 +21,7 @@ def get_pretrained_loader(pretrained_model_name_or_path: str,
     """
 
     if 'lama' in pretrained_model_name_or_path or 'ref_70' in pretrained_model_name_or_path:  # Llama or llama
+        print(f"Using Llama Loader!")
         return PretrainedLlamaLoader(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             huggingface_token=huggingface_token,
@@ -144,6 +145,10 @@ class PretrainedModelLoader():
 class PretrainedLlamaLoader(PretrainedModelLoader):
     def load(self, model_type: str = None, ):
         llama3_1 = float('.'.join(transformers.__version__.split('.')[:2])) > 4.42  # 'Meta-Llama-3.1' in self.loading_kwargs['pretrained_model_name_or_path']
+
+        print(f"{model_type=}")
+        print(f"{self.loading_kwargs}")
+
         if model_type is None:
             from transformers import LlamaForCausalLM as model_class
 
@@ -162,7 +167,8 @@ class PretrainedLlamaLoader(PretrainedModelLoader):
             from transformers import AutoModelForCausalLM as model_class
             print('-> Loading from AutoModelForCausalLM')
 
-        model = model_class.from_pretrained(**self.loading_kwargs)
+        model = model_class.from_pretrained(**self.loading_kwargs, offload_folder="./")
+
         if self.peft_id is not None:
             from peft import PeftModel
             print('-> Loading PEFT checkpoint')

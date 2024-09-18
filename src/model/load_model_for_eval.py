@@ -9,10 +9,10 @@ from omegaconf import OmegaConf
 import torch
 
 from src.utils.logging import print_header, print_config, _format_arg
-from .pretrained import get_pretrained_loader
-from .peft import create_peft_config
-from .load_model import load_and_convert_attns
-from .convert_model import remove_base_attention, toggle_attention
+from src.model.pretrained import get_pretrained_loader
+from src.model.peft import create_peft_config
+from src.model.load_model import load_and_convert_attns
+from src.model.convert_model import remove_base_attention, toggle_attention
 
 # Helpers
 def get_args_from_checkpoint(fname: str):
@@ -164,13 +164,14 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
         if len(attn_mlp_checkpoint_path.split('/')) == 4:
             model_config = attn_mlp_checkpoint_path.split('/')[2]
         else:
-            model_config = attn_mlp_checkpoint_path.split('/')[-1].split('-m=')[-1].split('-')[0]
-        model_config_path = join(config_dir, 'model', f'{model_config}.yaml')
+            model_config = [p for p in attn_mlp_checkpoint_path.split('/') if '=' not in p and 'finetune' not in p and 'wtk64' in p and 'xent' not in p][0]
+            # model_config = attn_mlp_checkpoint_path.split('/')[-1].split('-m=')[-1].split('-')[0]
+        model_config_path = join(config_dir, 'model', 'llama3_1_8b/' f'{model_config}.yaml')
         model_config = OmegaConf.load(model_config_path)
         args = get_args_from_checkpoint(attn_mlp_checkpoint_path.split('/')[-1])
         model_config = update_model_config_from_args(model_config, args)
     else:
-        if len(finetune_checkpoint_path.split('/')) == 4:
+        if finetune_checkpoint_path is not None and len(finetune_checkpoint_path.split('/')) == 4:
             model_config = finetune_checkpoint_path.split('/')[2]
         else:
             model_config = finetune_checkpoint_path.split('/')[-1].split('-m=')[-1].split('-')[0]
@@ -199,7 +200,11 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
         except NameError:
             pass
     
+    # SA flag
+
+
     # Get base model
+
     model_loader = get_pretrained_loader(**model_config.model)
     tokenizer = model_loader.load_tokenizer()
     tokenizer.pad_token_id = tokenizer.eos_token_id
