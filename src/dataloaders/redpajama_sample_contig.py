@@ -111,16 +111,19 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         _data_attr = '-d='.join(_data_attr).replace('/', '_').replace('.json', '')
         _data_attr = _data_attr.replace('[','_').replace(']','')
         
-        fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
-        fname = join('./src/dataloaders', fname)
+        # fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        fname = join(dataset_config['dataloaders_dir'], fname)
     
         
         try:
-            sample_idx = np.load(f'{fname}.npy')
+            sorted_idx = np.load(f'{fname}.npy')
+            sample_idx = sorted_idx[:num_train_samples].numpy()
             train_set.filtered_samples = [train_set.filtered_samples[ix] for ix in sample_idx]
             print(f'-> Top {num_train_samples} indices loaded from {fname}!')
-        except:
-            print(f'-> Error with loading from {fname}. Computing...')
+        except Exception as e:
+            print(e)
+            print(f'-> Error with loading from {fname}.npy. Computing...')
             model, model_config, tokenizer = load_model(config_dir='/scr-ssd/mzhang/projects/lolcats/configs',
                                                         model_config=dataset_config['esl_model_config'])
             model.eval()
@@ -130,12 +133,19 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
             train_esl = compute_effective_seq_lens(model, train_loader, 
                                                    max_samples=max_train_samples)
             # Rank samples by effective sequence length
-            train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples
-            sorted_idx = torch.argsort(train_esl, dim=-1, descending=True)
-            sample_idx = sorted_idx[:num_train_samples].numpy()
+            _train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples
+            sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
             # Save indices to generated filename
-            np.save(f'{fname}.npy', sample_idx)
+            np.save(f'{fname}.npy', sorted_idx)
             print(f'-> Top {num_train_samples} saved to {fname}!')
+            
+            _train_esl = train_esl[..., -128:].mean(0).mean(0).mean(-1)  # num_samples
+            sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
+            # Save indices to generated filename
+            np.save(f'{fname}_l128.npy', sorted_idx)
+            print(f'-> Top {num_train_samples} saved to {fname}!')
+            
+            sample_idx = sorted_idx[:num_train_samples].numpy()
             train_set.filtered_samples = [train_set.filtered_samples[ix] for ix in sample_idx]
     
     # Get dataloaders
@@ -176,7 +186,7 @@ def compute_effective_seq_lens(model, dataloader, max_samples: int = None):
     effective_seq_len_by_layer_by_head = [[] for _ in range(len(model.model.layers))]
     batch_idx = 0  # always batch size 1
     with torch.no_grad():
-        for ix, data in enumerate(tqdm(dataloader)):
+        for ix, data in enumerate(tqdm(dataloader, desc='Computing effective sequence lengths')):
             inputs = {k: v.to(model.device) for k, v in data.items() if k != 'labels'}
             outputs = model(**inputs, output_attentions=True, use_cache=False, 
                             output_hidden_states=False)

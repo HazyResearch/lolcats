@@ -180,6 +180,7 @@ def main():
     else:
         raise NotImplementedError("Please include num_train_samples in under experiment_config.dataset.dataset_config")
 
+    num_train_samples = distill_config.dataset.dataset_config['num_train_samples']
     max_train_samples = distill_config.dataset.dataset_config['max_train_samples']
     max_length = distill_config.dataset.dataset_config['max_length']
     min_length = distill_config.dataset.dataset_config['min_length']
@@ -196,20 +197,38 @@ def main():
     train_esl = compute_effective_seq_lens(model, train_loader, max_train_samples)  
     # eval_esl = compute_effective_seq_lens(model, eval_loader)
 
-    # Rank samples by effective sequence length
-    train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples
-    sorted_idx = torch.argsort(train_esl, dim=-1, descending=True)
-    sample_idx = sorted_idx[:num_train_samples].numpy()
-
     # Save indices to generated filename
     _data_attr = distill_config['dataset']['dataset_config']['train_data']
     _data_attr = '-d='.join(_data_attr).replace('/', '_').replace('.json', '')
     _data_attr = _data_attr.replace('[','_').replace(']','')
     
-    fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+    fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
     fname = join('./src/dataloaders', fname)
-    np.save(f'{fname}.npy', sample_idx)
-    print(f'Top {num_train_samples} saved to {fname}!')
+
+    # Rank samples by effective sequence length
+    _train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples
+    sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
+    # Save indices to generated filename
+    np.save(f'{fname}.npy', sorted_idx)
+    print(f'-> Top {num_train_samples} saved to {fname}!')
+
+    for window in [1, 2, 4, 8, 16, 32, 64, 128]:
+        _train_esl = train_esl[..., -window:].mean(0).mean(0).mean(-1)  # num_samples
+        sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
+        # Save indices to generated filename
+        np.save(f'{fname}_l{window:03d}.npy', sorted_idx)
+        print(f'-> Top {num_train_samples} saved to {fname}!')
+    
+    # sample_idx = sorted_idx[:num_train_samples].numpy()
+    # train_set.filtered_samples = [train_set.filtered_samples[ix] for ix in sample_idx]
+
+    # # Rank samples by effective sequence length
+    # train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples
+    # sorted_idx = torch.argsort(train_esl, dim=-1, descending=True)
+    # sample_idx = sorted_idx[:num_train_samples].numpy()
+
+    # np.save(f'{fname}.npy', sample_idx)
+    # print(f'Top {num_train_samples} saved to {fname}!')
     
 
 if __name__ == '__main__':
