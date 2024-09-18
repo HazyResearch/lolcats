@@ -4,6 +4,7 @@ Script to distill pretrained Transformers into linear attention variants
 import sys
 import os
 from os.path import join
+from typing import List
 
 import argparse
 import torch
@@ -32,7 +33,7 @@ from src.model.utils import count_parameters
 def get_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='llama_recipes')
+    parser.add_argument("--project_name", type=str, default='lolcats')
     parser.add_argument("--model_config", type=str, default=None)
     parser.add_argument("--distill_config", type=str, default=None)
     parser.add_argument("--finetune_config", type=str, default=None)
@@ -294,11 +295,11 @@ def main():
     # 2. Finetune model further (if desired)
     if (args.finetune_config is not None or
         (args.load_finetune_checkpoint is not None and args.resume_finetune)):
-        if not args.no_init_eval:
-            print_header('*** Distilled Evaluation ***')
-            initial_metrics = evaluate_model(model, tokenizer)
-            for k, v in initial_metrics.items():
-                print(f'├── {k}: {v}')
+        # if not args.no_init_eval:
+        #     print_header('*** Distilled Evaluation ***')
+        #     initial_metrics = evaluate_model(model, tokenizer)
+        #     for k, v in initial_metrics.items():
+        #         print(f'├── {k}: {v}')
 
         if args.max_finetune_steps is not None:
             args.max_steps = args.max_finetune_steps
@@ -336,11 +337,11 @@ def main():
             _flattened['peft_ft'] = ft_peft_config
             wandb.config.update(_flattened, allow_val_change=True)
 
-    if not args.no_init_eval:  # Check on summary example
-        print_header('*** Distilled + Finetuned Evaluation ***')
-        initial_metrics = evaluate_model(model, tokenizer)
-        for k, v in initial_metrics.items():
-            print(f'├── {k}: {v}')
+    # if not args.no_init_eval:  # Check on summary example
+    #     print_header('*** Distilled + Finetuned Evaluation ***')
+    #     initial_metrics = evaluate_model(model, tokenizer)
+    #     for k, v in initial_metrics.items():
+    #         print(f'├── {k}: {v}')
 
     if args.eval_config is not None:
         eval_config = OmegaConf.load(join('./configs/experiment', f'{args.eval_config}.yaml'))

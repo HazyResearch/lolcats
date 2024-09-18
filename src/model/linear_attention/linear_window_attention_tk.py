@@ -191,11 +191,11 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
                     _kv = past_key_value.update_for_decoding(k, v, self.layer_idx,
                                                              self.feature_map_k,
                                                              dtype=q.dtype)
-                    k_cache, v_cache, kv_state, k_state = _kv
+                    k_cache, v_cache, f_kv_state, f_k_state = _kv
 
                     # Sliding window + linear attention decode
                     window_factors = F.sigmoid(self.window_factors)
-                    linear_factors = 1
+                    linear_factors = 1 - window_factors if self.affine_attention_factors else 1
 
                     # Softmax attention terms
                     a_sm = torch.einsum('bhmd,bhnd->bhmn', q.float(), k_cache.float()) * (k.shape[-1] ** -0.5)
@@ -205,9 +205,9 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
 
                     # Combine with linear attention terms
                     y_true = (torch.einsum('bhmn,bhnd->bhmd', a_sm, v_cache.float())
-                              + linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float()))
+                              + linear_factors * torch.einsum('bhlf,bhfd->bhld', f_q.float(), f_kv_state.float()))
                     sum_ln = linear_factors * torch.einsum(
-                        'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
+                        'bhld,bhnd->bhl', f_q.float(), f_k_state.float())[..., None]
                     y_true = (y_true / (sum_sm + sum_ln)).to(q.dtype) 
 
                 else:  # Stateful training
@@ -244,9 +244,10 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
     -> Modified from transformers.cache_utils.DynamicCache (v4.36)
     """
     def __init__(self, window_size: int = 64) -> None:
+
         super().__init__()
         self._seen_tokens = 0  # should be `self.seen_tokens` in Transformers v4.36
-        self._seen_tokens_by_layer: List[int] = []
+        self._seen_tokens_by_layer = 0
         self.kv_states: List[torch.Tensor] = []
         self.k_states:  List[torch.Tensor] = []
 
@@ -255,9 +256,23 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
         self.decode_k_states: List[torch.Tensor] = []
         self.k_cache: List[torch.Tensor] = []
         self.v_cache: List[torch.Tensor] = []
+
+        # self.softmax_attns = [7, 15, 23, 31]
+        self.softmax_attns = []   
+        if self.softmax_attns is not None:
+            self.k_cache_attns: List[torch.Tensor] = []
+            self.v_cache_attns: List[torch.Tensor] = []
+
         self.window_size = window_size
 
-    def update(self, key_states: torch.Tensor, value_states: torch.Tensor, 
+    def get_seq_length(self, layer_idx: Optional[int] = 0) -> int:
+        """
+        Returns the sequence length of the cached states. A layer ind ex can be optionally passed.
+        """
+        return self._seen_tokens_by_layer
+
+    def update(self, 
+               key_states: torch.Tensor, value_states: torch.Tensor, 
                layer_idx: Optional[int] = None, cache_kwargs: Optional[any] = None,
                accumulate_in_fp32: bool = False, 
                fmap_key_states: torch.Tensor = None,  # should not be None
@@ -271,7 +286,8 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
         - For (chunked) training, use `self.kv_states` to keep track of KV states
           up to end of sequence
         - Likewise for `self.decode_k_states` and `self.k_states`
-        """
+        """ 
+        
         with torch.set_grad_enabled(grad_enabled):
             if layer_idx == 0:
                 self._seen_tokens += key_states.shape[-2]
@@ -282,80 +298,122 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
                 fmap_key_states = fmap_key_states.float()
                 value_states = value_states.float()
 
-            # Decoding KV state (KV terms up to last window_size)
-            decode_kv_state = torch.einsum(
-                'bhlf,bhld->bhfd', 
-                fmap_key_states[:, :, :-self.window_size],
-                value_states[:, :, :-self.window_size]
-            )
-            # KV state
-            kv_state = decode_kv_state + torch.einsum(
-                'bhlf,bhld->bhfd', 
-                fmap_key_states[:, :, -self.window_size:],
-                value_states[:, :, -self.window_size:]
-            )
-            # shape is b, h, 1, f; note the 1
-            decode_k_state = fmap_key_states[:, :, :-self.window_size].sum(dim=-2, keepdim=True)
-            k_state = (decode_k_state +
-                       fmap_key_states[:, :, -self.window_size:].sum(dim=-2, keepdim=True))
+            if layer_idx in self.softmax_attns:
+                # print(f"hiiii") 
+                pass 
+
+            else:
+                # Decoding KV state (KV terms up to last window_size)
+                decode_kv_state = torch.einsum(
+                    'bhlf,bhld->bhfd', 
+                    fmap_key_states[:, :, :-self.window_size],
+                    value_states[:, :, :-self.window_size]
+                )
+                # KV state
+                kv_state = decode_kv_state + torch.einsum(
+                    'bhlf,bhld->bhfd', 
+                    fmap_key_states[:, :, -self.window_size:],
+                    value_states[:, :, -self.window_size:]
+                )
+                # shape is b, h, 1, f; note the 1
+                decode_k_state = fmap_key_states[:, :, :-self.window_size].sum(dim=-2, keepdim=True)
+                k_state = (decode_k_state +
+                        fmap_key_states[:, :, -self.window_size:].sum(dim=-2, keepdim=True))
 
             # Update the cache
-            if len(self.k_states) <= layer_idx:  # Initializing kv and k states
-                self.kv_states.append(kv_state.to(dtype))
-                self.k_states.append(k_state.to(dtype))
+            if len(self.k_states) <= layer_idx:  
+                # Initializing kv and k states
+                if layer_idx in self.softmax_attns:
+                    self.kv_states.append(torch.zeros_like(
+                        self.kv_states[layer_idx - 1], dtype=dtype))
+                    self.k_states.append(torch.zeros_like(
+                        self.k_states[layer_idx - 1], dtype=dtype))
+                    self.decode_kv_states.append(torch.zeros_like(
+                        self.decode_kv_states[layer_idx - 1], dtype=dtype))
+                    self.decode_k_states.append(torch.zeros_like(
+                        self.decode_k_states[layer_idx - 1], dtype=dtype))
+                    self.k_cache.append(torch.zeros_like(
+                        self.k_cache[layer_idx - 1], dtype=dtype))
+                    self.v_cache.append(torch.zeros_like(
+                        self.v_cache[layer_idx - 1], dtype=dtype))
+                else:
+                    self.kv_states.append(kv_state.to(dtype))
+                    self.k_states.append(k_state.to(dtype))
 
-                self.decode_kv_states.append(decode_kv_state.to(dtype))
-                self.decode_k_states.append(decode_k_state.to(dtype))
+                    self.decode_kv_states.append(decode_kv_state.to(dtype))
+                    self.decode_k_states.append(decode_k_state.to(dtype))
 
-                self.k_cache.append(key_states[:, :, -self.window_size:, :])
-                self.v_cache.append(value_states[:, :, -self.window_size:, :].to(dtype))
-                # self._seen_tokens_by_layer[layer_idx].append(key_states.shape[-2])
+                    self.k_cache.append(key_states[:, :, -self.window_size:, :])
+                    self.v_cache.append(value_states[:, :, -self.window_size:, :].to(dtype))
+
+                if self.softmax_attns is not None:
+                    self.k_cache_attns.append(key_states)
+                    self.v_cache_attns.append(value_states)
+
             else:
-                # Update kv and k states recurrently
-                kv_state = (self.kv_states[layer_idx].to(kv_state.dtype) + kv_state).to(dtype)
-                k_state  = (self.k_states[layer_idx].to(kv_state.dtype) + k_state).to(dtype)
-                self.kv_states[layer_idx] = kv_state
-                self.k_states[layer_idx]  = k_state
+                
+                if layer_idx in self.softmax_attns:
+                    self.k_cache_attns[layer_idx] = key_states
+                    self.v_cache_attns[layer_idx] = value_states
+                else:
+                    # Update kv and k states recurrently
+                    kv_state = (self.kv_states[layer_idx].to(kv_state.dtype) + kv_state).to(dtype)
+                    k_state  = (self.k_states[layer_idx].to(kv_state.dtype) + k_state).to(dtype)
+                    self.kv_states[layer_idx] = kv_state
+                    self.k_states[layer_idx]  = k_state
 
-                decode_kv_state = (self.decode_kv_states[layer_idx].to(kv_state.dtype) 
-                                   + decode_kv_state).to(dtype)
-                decode_k_state  = (self.decode_k_states[layer_idx].to(kv_state.dtype) 
-                                   + decode_k_state).to(dtype)
-                self.decode_kv_states[layer_idx] = decode_kv_state
-                self.decode_k_states[layer_idx]  = decode_k_state
+                    decode_kv_state = (self.decode_kv_states[layer_idx].to(kv_state.dtype) 
+                                    + decode_kv_state).to(dtype)
+                    decode_k_state  = (self.decode_k_states[layer_idx].to(kv_state.dtype) 
+                                    + decode_k_state).to(dtype)
+                    self.decode_kv_states[layer_idx] = decode_kv_state
+                    self.decode_k_states[layer_idx]  = decode_k_state
 
-                self.k_cache[layer_idx] = key_states[:, :, -self.window_size:, :]
-                self.v_cache[layer_idx] = value_states[:, :, -self.window_size:, :]
-            self._seen_tokens_by_layer[layer_idx] += key_states.shape[-2]
+                    self.k_cache[layer_idx] = key_states[:, :, -self.window_size:, :]
+                    self.v_cache[layer_idx] = value_states[:, :, -self.window_size:, :]
 
-        return self.kv_states[layer_idx], self.k_states[layer_idx]
+            if layer_idx == 0:
+                self._seen_tokens_by_layer += key_states.shape[-2]
+
+        if layer_idx in self.softmax_attns:
+            return self.k_cache_attns[layer_idx], self.v_cache_attns[layer_idx] 
+        else:
+            return self.kv_states[layer_idx], self.k_states[layer_idx]
+
 
     def update_for_decoding(self, keys: torch.Tensor, values: torch.Tensor, 
                             layer_idx: int, feature_map_k: Callable, dtype: torch.dtype):
         """
         Update the decoding KV and K states, and KV cache, during decodeing
         """
+
+        # breakpoint()  
+
         with torch.no_grad():
             k_cache = self.k_cache[layer_idx]
             v_cache = self.v_cache[layer_idx]
-            k_state = feature_map_k(k_cache[:, :, :1, :])
-            v_state = v_cache[:, :, :1, :]
-            # try:
-            #     k_state = feature_map_k(k_cache[:, :, :1, :])
-            # except Exception as e:
-            #     print(f'layer_idx:', layer_idx)
-            #     print(f'k_cache.shape:', k_cache.shape)
-            #     print(f'v_cache.shape:', v_cache.shape)
-            #     breakpoint()
-            kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
-            self.decode_kv_states[layer_idx] += kv_state
-            self.decode_k_states[layer_idx] += k_state
-            
-            self.k_cache[layer_idx] = torch.cat([k_cache[:, :, 1:, :], keys], dim=-2)
-            self.v_cache[layer_idx] = torch.cat([v_cache[:, :, 1:, :], values], dim=-2)
+
+            if k_cache.shape[-2] < self.window_size:  # build window-size cache
+                self.k_cache[layer_idx] = torch.cat([k_cache, keys], dim=-2)
+                self.v_cache[layer_idx] = torch.cat([v_cache, values], dim=-2)
+            else:
+                k_state = feature_map_k(k_cache[:, :, :1, :])  
+                print(f"{feature_map_k.layer=}")     
+                # breakpoint()
+                v_state = v_cache[:, :, :1, :]
+                kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
+                self.decode_kv_states[layer_idx] += kv_state
+                self.decode_k_states[layer_idx] += k_state
+                
+                self.k_cache[layer_idx] = torch.cat([k_cache[:, :, 1:, :], keys], dim=-2)
+                self.v_cache[layer_idx] = torch.cat([v_cache[:, :, 1:, :], values], dim=-2)
             
             if layer_idx == 0:
                 self._seen_tokens += keys.shape[-2]
-            self._seen_tokens_by_layer[layer_idx] += keys.shape[-2]
+
+            self._seen_tokens_by_layer += keys.shape[-2]
+
             return (self.k_cache[layer_idx], self.v_cache[layer_idx], 
                     self.decode_kv_states[layer_idx], self.decode_k_states[layer_idx])
+
+

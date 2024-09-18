@@ -158,7 +158,7 @@ class OurTrainer():
             self.compute_eval_metrics(model, step=self.grad_step)
         
         # model.to(self.device)
-        for ix, data in enumerate(pbar):
+        for ix, data in enumerate(pbar):            
             loss, train_metrics = self.compute_loss(model, data, 
                                                     sample_idx=ix)
             loss /= accum_iter
@@ -245,7 +245,11 @@ class OurTrainer():
                         self.eval_metrics_by_step[k] = [v]
                     else:
                         self.eval_metrics_by_step[k].append(v)
+                
                 # Inefficient, but log for experiments results
+                import os
+                if not os.path.exists(self.results_path):
+                    os.makedirs("/".join(self.results_path.split("/")[:-1]), exist_ok=True)
                 pd.DataFrame(self.eval_metrics_by_step).to_csv(self.results_path)
 
             # Save best metric and checkpoint
@@ -296,6 +300,7 @@ class OurTrainer():
         step_eval_metrics = {}
         with torch.no_grad():
             for ix, data in enumerate(pbar):
+
                 loss, eval_metrics = self.compute_loss(model, data)
                 if not self.compute_loss_backprop:
                     loss = loss.item()  # otherwise already float
@@ -313,6 +318,7 @@ class OurTrainer():
                 if self.optimizer is not None:
                     desc += f" | lr: {self.optimizer.param_groups[0]['lr']:.5f}"
                 pbar.set_description(desc)
+                
                 if ix == max_batches:
                     break
 
