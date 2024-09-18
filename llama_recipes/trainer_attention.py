@@ -90,18 +90,11 @@ class LossComputer():
                     a_true = a_true.contiguous().view(-1, k_len)
                     loss_xent += self.criterion_xent(a_pred[:, :self.n_keys],
                                                      a_true[:, :self.n_keys])
-                    # a_pred = a_pred.detach().cpu()
-                    # a_true = a_true.detach().cpu()
-                    # loss_xent += self.criterion_xent(a_pred.to(model.device), 
-                    #                                  a_true.to(model.device))
-
+                    
                 # y_preds, y_true (raw values)
                 if self.mse_factor > 0:
-                    # 
                     loss_mse += self.criterion_mse(*attns[1]) 
-                    # attns[1][0] = attns[1][0].detach().cpu()
-                    # attns[1][1] = attns[1][1].detach().cpu()
-                    # loss_mse += self.criterion_mse(*[a.to(model.device) for a in attns[1]])
+                
                 n_layers += 1
                 # torch.cuda.empty_cache()
         
@@ -208,7 +201,6 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             total_length = len(train_dataloader)//gradient_accumulation_steps
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
-                if step >= total_length: break # SA added for RP data
 
                 model.train()
                 # print(f'-> {rank=}, {step=}')
@@ -226,6 +218,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                                 batch[key] = batch[key].to('xpu:0')
                             else:
                                 batch[key] = batch[key].to('cuda:0')
+                        print(f"{key=}, {batch[key].shape=}")
+
                 with autocast():
                     loss, loss_metrics = loss_computer.compute_loss(model, batch)
                 loss = loss / gradient_accumulation_steps
@@ -288,7 +282,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                 if step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic
 
-                if max_optimizer_steps is not None and total_optimizer_steps >= max_optimizer_steps:
+                if max_optimizer_steps is not None and step >= max_optimizer_steps:
                     print(f"Reached max_optimizer_steps = {max_optimizer_steps}")
                     end = True 
                     break 
@@ -317,7 +311,7 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         train_epoch_loss = total_loss / len(train_dataloader)
         if train_config.enable_fsdp:
-            train_epoch_loss = train_epoch_loss/world_size
+            train_epoch_loss = train_epoch_loss / world_size
         train_loss.append(float(train_epoch_loss))
 
         if not train_config.enable_fsdp or rank==0:
@@ -501,7 +495,7 @@ def evaluate_attn(model, train_config, eval_dataloader,
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     if train_config.enable_fsdp:
         print(f"{world_size=}")
-        eval_epoch_loss = eval_epoch_loss/world_size
+        eval_epoch_loss = eval_epoch_loss / world_size
 
     eval_epoch_loss = eval_epoch_loss.cpu().float().item()
 

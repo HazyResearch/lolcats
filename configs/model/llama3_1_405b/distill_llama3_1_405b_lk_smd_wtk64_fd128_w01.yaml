@@ -1,22 +1,23 @@
 name: llama
 model:
-  pretrained_model_name_or_path: "mattshumer/ref_70_e3"
-  cache_dir: "/scratch/sim_data/reflection-70b/" # Set this to where you want to save checkpoint weights
+  # pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-8B"
+  pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
+  pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
+  cache_dir: null
   return_dict: true
   load_in_8bit: false
   load_in_4bit: false
-  device_map: auto
-  low_cpu_mem_usage: true
+  device_map: null
+  low_cpu_mem_usage: false
   torch_dtype: bfloat16
-  attn_implementation: sdpa
+  attn_implementation: flash_attention_2
   rope_theta: 500000.0
   rope_scaling:
     factor: 8.0
     low_freq_factor: 1.0
     high_freq_factor: 4.0
     original_max_position_embeddings: 8192
-    # rope_type: llama3
-    type: llama3
+    rope_type: llama3
 
 attention:
   attention_type: lolcats_llama_window_tk
@@ -32,7 +33,7 @@ attention:
   layer_idx: null # to set
   learned_kernel: untied_head_einsum
   learned_kernel_kwargs:
-    feature_dim: 64
+    feature_dim: 128
     skip_connection: false
     bias: false
     zero_init: false

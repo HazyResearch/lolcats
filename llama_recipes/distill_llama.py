@@ -49,7 +49,6 @@ from llama_recipes.trainer_attention import (
 from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
 )
-# from llama_recipes.trainer_attention_chunked import train as train_chunked
 # from torch.distributed.optim import DistributedOptimizer
 
 from accelerate.utils import is_xpu_available
@@ -363,7 +362,6 @@ def main():
         setup_environ_flags(rank)
 
     wandb_run = None
-
     if not args.no_wandb:
         if not args.enable_fsdp or rank==0:
             wandb_run = setup_wandb(distill_config, fsdp_config, **kwargs)  

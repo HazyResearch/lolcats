@@ -82,6 +82,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         chat_template=dataset_config['chat_template'],
         seed=dataset_config['seed'],
         cache_dir=dataset_config['cache_dir'],
+        use_c4=dataset_config['use_c4'],
     )
     val_set = Data.prepare_eval_data(
         dataset_config['eval_data'], 
@@ -91,7 +92,8 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         chat_template=dataset_config['chat_template'],
         seed=dataset_config['seed'],
         cache_dir=dataset_config['cache_dir'],
-        max_eval_num=dataset_config['max_eval_num']
+        max_eval_num=dataset_config['max_eval_num'],
+        use_c4=dataset_config['use_c4'],
     )
 
     train_set = ConcatDataset(train_set, chunk_size=dataset_config['chunk_size'])
@@ -131,7 +133,8 @@ class Data:
                 outputs[k].append(v)
         return outputs
 
-    def prepare_train_data(data_files=None, tokenizer=None, max_length=4096, min_length=512, chat_template="llama-3", max_sample_num=None, seed=42, cache_dir=None, load_from_cache_file=None):
+    def prepare_train_data(data_files=None, tokenizer=None, max_length=4096, min_length=512, chat_template="llama-3", max_sample_num=None, seed=42, cache_dir=None, load_from_cache_file=None,
+    use_c4=False):
         if data_files is None:
             return None
 
@@ -169,6 +172,11 @@ class Data:
                 print('cache_dir', cache_dir)
                 dataset = datasets.load_dataset('json', data_files=data_file, split='train', cache_dir=cache_dir)
 
+                if use_c4:
+                    # only keep the entries where the source in dataset[i]['meta'] is 'c4'
+                    dataset = dataset.filter(lambda x: 'meta' in x)
+                    dataset = dataset.filter(lambda x: "'source': 'c4'" in x['meta'])
+
                 column_names = dataset.column_names
                 if "text" in column_names:
                     process_fn = partial(
@@ -203,7 +211,8 @@ class Data:
 
         return dataset
 
-    def prepare_eval_data(data_files=None, tokenizer=None, max_length=4096, min_length=512, chat_template="llama-3", max_eval_num=None, cache_dir=None, seed=42, load_from_cache_file=None):
+    def prepare_eval_data(data_files=None, tokenizer=None, max_length=4096, min_length=512, chat_template="llama-3", max_eval_num=None, cache_dir=None, seed=42, load_from_cache_file=None,
+    use_c4=False):
         if data_files is None:
             return None
 
@@ -213,10 +222,21 @@ class Data:
         cache_dir = '/'.join(data_files.split('/')[:-1])
         print('cache_dir', cache_dir)
 
-        if max_eval_num is not None:
+        if max_eval_num is not None and not use_c4:
             dataset = datasets.load_dataset('json', data_files=data_files, split=f'train[:{max_eval_num}]', cache_dir=cache_dir)
         else:
             dataset = datasets.load_dataset('json', data_files=data_files, split='train', cache_dir=cache_dir)
+
+        if use_c4:
+            # only keep the entries where the source in dataset[i]['meta'] is 'c4'
+            dataset = dataset.filter(lambda x: 'meta' in x)
+            dataset = dataset.filter(lambda x: "'source': 'c4'" in x['meta'])
+            # truncate dataset to max_eval_num
+            print("hi!')")
+            if max_eval_num is not None:
+                # get first max_eval_num samples
+                dataset = dataset.select(range(max_eval_num))
+
 
         column_names = dataset.column_names
         if "text" in column_names:
