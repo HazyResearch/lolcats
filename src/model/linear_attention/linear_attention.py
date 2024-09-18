@@ -264,6 +264,7 @@ class LolcatsLinearAttention(nn.Module):
         if self.rotary_emb is None:
             self.max_position_embeddings = base_attn.max_position_embeddings
             scaling_factor = getattr(base_attn.rotary_emb, 'scaling_factor', 1.)
+
             if self.rotary_config is None:
                 self.rotary_emb = get_rotary_embeddings(
                     rope_scaling_type=None,

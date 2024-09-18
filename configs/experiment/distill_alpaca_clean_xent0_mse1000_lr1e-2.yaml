@@ -3,12 +3,12 @@ dataset:
   dataset_config:
     name: default
     path: yahma/alpaca-cleaned
-    chunk_size: 1024 # 2048
+    chunk_size: 1024  # sequence length for distilling
     concat_data: true
-    cache_dir: "data/"
-  pretrained_model_config:
-    pretrained_model_name_or_path: "mattshumer/ref_70_e3"
-    cache_dir: "/scratch/sim_data/reflection-70b/" # Set this to where you want to save 
+    cache_dir: 'data/alpaca'  # Change this to where you want to save
+  pretrained_model_config:  # will be updated based on model_config
+    pretrained_model_name_or_path: 'meta-llama/Meta-Llama-3.1-8B'  
+    cache_dir: '/data_persistent2/sim_data/llama-3_1-8b/'
   preprocess_config: null
 
 dataloader:
@@ -18,9 +18,9 @@ dataloader:
   pin_memory: true
 
 optimizer:
-  optim: adamw_torch # adamw
+  optim: adamw_torch_fused
   lr: 0.01
-  # weight_decay: 0.0
+  weight_decay: 0.0
 
 lr_scheduler:
   lr_scheduler_type: reduce_lr_on_plateau
@@ -29,13 +29,12 @@ lr_scheduler:
   patience: 10
   min_lr: 0.00001
 
-trainer: # HuggingFace Trainer-like arguments
+trainer:  # HuggingFace Trainer-like arguments  
   name: distill_attention_xent_mse
+  reverse_kl: false
   mse_factor: 1000
-  xent_factor: 1
-  n_queries: 64
-  n_keys: null
-
+  xent_factor: 0
+  
   bf16: true
   train_split: train
   val_split: validation
@@ -49,5 +48,5 @@ trainer: # HuggingFace Trainer-like arguments
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 80 # round number for batch size grad accums
+  eval_steps: 100
   max_eval_batches: null

@@ -93,9 +93,8 @@ from src.model.load_model import (
     load_and_convert_attns,
     load_and_convert_finetune
 )
-from distill_llama import (
-    setup_wandb, get_args,  # get_run_name_from_checkpoint
-    get_dataloaders, setup_fsdp_config
+from llama_recipes.distill_llama import (
+     get_args, get_dataloaders, setup_fsdp_config 
 )
 
 from tqdm import tqdm
@@ -304,7 +303,7 @@ def main():
     # -----------------------------------
     layer_interval = args.layers_per_model 
     assert layer_interval > 0, print("Need to pass in args.layers_per_model")
-    save_dir = f"/scratch/sim/{model_name}"
+    save_dir = f"/data_ephemeral/sim/{model_name}-interval{layer_interval}"
     os.makedirs(save_dir, exist_ok=True) 
 
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
@@ -320,6 +319,8 @@ def main():
             pbar = tqdm(dataloader, desc=f'❯❯❯ Computing layer-wise outputs on rank {rank} for {split} split')
             max_digits = len(str(len(pbar)))
             for step, batch in enumerate(pbar):
+                if step > 5000: break   # SA Flag
+
                 batch = {'input_ids': batch['input_ids']}
                 key = 'input_ids'
                 if distill_config.enable_fsdp:
@@ -341,11 +342,11 @@ def main():
                 if args.enable_fsdp:
                     dist.barrier()
 
-                # torch.distributed.barrier()
                 if (step + 1) % CUTOFF_BATCH == 0:  # Flag
                     # Save layer-wise outputs to disk
                     for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
-                        if layer_idx % layer_interval == 0:
+                        # if (layer_idx in filtered_layers):  # SA Flag
+                        if layer_idx % layer_interval == 0: 
                             attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
                             fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
                             torch.save(attn_inputs, fpath)
@@ -356,7 +357,8 @@ def main():
         
         # Save layer-wise outputs to disk
         for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
-            if layer_idx % layer_interval == 0:
+            if layer_idx % layer_interval == 0: 
+            # if (layer_idx in filtered_layers):   # SA Flag
                 attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
                 fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
                 torch.save(attn_inputs, fpath)

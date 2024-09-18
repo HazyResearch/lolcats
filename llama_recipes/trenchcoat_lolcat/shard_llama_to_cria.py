@@ -38,7 +38,7 @@ from torch.distributed.fsdp import (
 from llama_recipes.configs import fsdp_config as FSDP_CONFIG
 
 from accelerate.utils import is_xpu_available
-from distill_llama import setup_fsdp_config
+from llama_recipes.distill_llama import setup_fsdp_config
 from llama_recipes.trainer_attention import (
     train,
     setup,
@@ -231,8 +231,15 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    # checkpoint_dir = "/data_ephemeral/sim/sharded_layers_405b/"
-    checkpoint_dir = "/data_ephemeral/sim/sharded_layers_70b/"
+    checkpoint_dir = f"/data_ephemeral/sim/sharded_layers_405b_interval{args.layers_per_model}/"
+    # checkpoint_dir = "/data_ephemeral/sim/sharded_layers_70b/"
+    # filtered_layers = [
+    #     72, 73, 74, 75, 76, 77, 78, 79, 80,
+    #     108, 109, 110, 111, 112, 113, 114, 115, 116, 
+    #     # 117, 118, 119, 120, 121, 122, 123, 124, 125,
+    #     0, 1, 8, 9, 16, 17,
+    #     36, 37, 44, 45, 52, 53,
+    # ]
 
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -386,6 +393,8 @@ def main():
         print(model.state_dict().keys())
         # print(f"Done with the keys\n\n")
     
+    mini_init = {}
+    for i in range(args.layers_per_model): mini_init[i] = False
     with torch.no_grad():
         first = 0
         for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
@@ -397,9 +406,22 @@ def main():
             if layer_idx == 0 and rank == 0: 
                 print(layer.state_dict().keys())
 
-            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict())
+            # if layer_idx < 117:     # SA Flag
+            #     first = layer_idx + 1
+            #     del mini_llama
+            #     if rank == 0: print(f"Deleting and making a new one.")
+            #     with torch.device('meta'):
+            #         mini_llama = LlamaMiniModelForCausalLM(mini_config).to(torch.bfloat16)
+            #     mini_llama = mini_llama.to_empty(device='cpu')
+            #     for i in range(args.layers_per_model): mini_init[i] = False
+            #     continue
             
-            if (layer_idx + 1) % args.layers_per_model == 0:
+            mini_init[layer_idx % args.layers_per_model] = True
+            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict()) # SA Flag
+            if (layer_idx + 1) % args.layers_per_model == 0: 
+                # breakpoint()
+            # if (layer_idx in filtered_layers):  # SA Flag
+            #     mini_llama.model.layers[0].load_state_dict(layer.state_dict()) # SA Flag
 
                 if rank == 0: 
                     print(f"{layer_idx=}")
@@ -407,9 +429,10 @@ def main():
                 pretrained_fname = (
                     join(checkpoint_dir, pretrained_fname) + 
                     f'-in={first:0{max_digits}d}-out={layer_idx:0{max_digits}d}.pt'
-                )  # name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
+                )  
 
                 if rank == 0 or not args.enable_fsdp:
+                    print(f"Initialized?\n{mini_init=}")
                     torch.save(mini_llama.state_dict(), pretrained_fname)
                     print(f"Saved to: {pretrained_fname}!")
 
@@ -419,6 +442,8 @@ def main():
                 with torch.device('meta'):
                     mini_llama = LlamaMiniModelForCausalLM(mini_config).to(torch.bfloat16)
                 mini_llama = mini_llama.to_empty(device='cpu')
+                for i in range(args.layers_per_model): mini_init[i] = False
+
     del model
     print(f"Deleted model.")
 
@@ -428,7 +453,7 @@ def main():
     start, end = args.layer_idx, args.layer_idx + args.layers_per_model
     with torch.no_grad():
         pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
-        pretrained_fname = join(checkpoint_dir, pretrained_fname) + f'-{name_suffix}.pt'
+        pretrained_fname = join(checkpoint_dir, 'sharded_layers', pretrained_fname) + f'-{name_suffix}.pt' 
         teacher_mini_llama.load_state_dict(torch.load(pretrained_fname))
         if rank == 0 or not args.enable_fsdp:
             print_header('All teacher weights loaded successfully')
