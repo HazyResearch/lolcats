@@ -100,6 +100,10 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     if 'filter_by_esl' not in dataset_config:
         dataset_config['filter_by_esl'] = False
 
+    if 'filter_window' not in dataset_config:
+        dataset_config['filter_window'] = 0
+    window = dataset_config['filter_window']
+
     if dataset_config['filter_by_esl']:
         cache_dir = dataset_config['cache_dir']
         # train_set = convert_to_hf_dataset(train_set, cache_dir)
@@ -111,14 +115,19 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         _data_attr = '-d='.join(_data_attr).replace('/', '_').replace('.json', '')
         _data_attr = _data_attr.replace('[','_').replace(']','')
         
-        # fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
-        fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        # fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
         fname = join(dataset_config['dataloaders_dir'], fname)
     
         
         try:
-            sorted_idx = np.load(f'{fname}.npy')
-            sample_idx = sorted_idx[:num_train_samples].numpy()
+            fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+            fname = join(dataset_config['dataloaders_dir'], fname)
+            if dataset_config['filter_window'] > 0:
+                sorted_idx = np.load(f'{fname}_l{window:03d}.npy')
+            else:
+                sorted_idx = np.load(f'{fname}.npy')
+            sample_idx = sorted_idx[:num_train_samples]  # .numpy()
             train_set.filtered_samples = [train_set.filtered_samples[ix] for ix in sample_idx]
             print(f'-> Top {num_train_samples} indices loaded from {fname}!')
         except Exception as e:

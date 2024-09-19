@@ -6,7 +6,7 @@ dataset:
     eval_data:
     - redpajama/train.json
     num_train_samples: 20000  # (8 * 2500) * (1024) = 20M
-    max_train_samples: 50000
+    max_train_samples: 40000
     max_eval_num: 1000
     max_length: 32768
     min_length: 1
