@@ -115,8 +115,8 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         _data_attr = '-d='.join(_data_attr).replace('/', '_').replace('.json', '')
         _data_attr = _data_attr.replace('[','_').replace(']','')
         
-        fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
-        # fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        # fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
+        fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
         fname = join(dataset_config['dataloaders_dir'], fname)
     
         
