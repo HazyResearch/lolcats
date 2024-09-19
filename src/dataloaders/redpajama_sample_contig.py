@@ -148,11 +148,11 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
             np.save(f'{fname}.npy', sorted_idx)
             print(f'-> Top {num_train_samples} saved to {fname}!')
             
-            _train_esl = train_esl[..., -128:].mean(0).mean(0).mean(-1)  # num_samples
-            sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
-            # Save indices to generated filename
-            np.save(f'{fname}_l128.npy', sorted_idx)
-            print(f'-> Top {num_train_samples} saved to {fname}!')
+            # _train_esl = train_esl[..., -128:].mean(0).mean(0).mean(-1)  # num_samples
+            # sorted_idx = torch.argsort(_train_esl, dim=-1, descending=True)
+            # # Save indices to generated filename
+            # np.save(f'{fname}_l128.npy', sorted_idx)
+            # print(f'-> Top {num_train_samples} saved to {fname}!')
             
             sample_idx = sorted_idx[:num_train_samples].numpy()
             train_set.filtered_samples = [train_set.filtered_samples[ix] for ix in sample_idx]
