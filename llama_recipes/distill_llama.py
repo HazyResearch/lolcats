@@ -96,6 +96,8 @@ def get_args():
     parser.add_argument("--eval_config", type=str, default=None)
 
     parser.add_argument("--layers_per_model", type=int, default=None)
+    parser.add_argument("--layers_limit", type=int, default=None)
+    parser.add_argument("--layers_min_limit", type=int, default=None)
 
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
     parser.add_argument("--load_distill_checkpoint", type=str, default=None)
