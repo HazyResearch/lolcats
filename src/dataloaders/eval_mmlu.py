@@ -160,6 +160,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     if 'tasks' not in dataset_config:
         dataset_config['tasks'] = None
     tasks = dataset_config['tasks']
+    print(f'tasks: {tasks}')
     
     if tasks is None:
         _task = 'hendrycksTest'
@@ -169,7 +170,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     task_dict = get_task_dict(tasks)
     task_dict_items = [
         (name, task)
-        for name, task ain task_dict.items()
+        for name, task in task_dict.items()
         if (task.has_validation_docs() or task.has_test_docs())
     ]
 
@@ -184,18 +185,19 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     requests_origin = requests_origin['loglikelihood']  # Original sample
     # (0, 'mmlu-anatomy', {'query': 'Blood flows from the right ventricle of the heart into which of the following structures?\nA. Inferior vena cava\nB. Left ventricle\nC. Pulmonary arteries\nD. Pulmonary veins\nAnswer:', 'choices': ['A', 'B', 'C', 'D'], 'gold': 2}, 1)
 
+    # breakpoint()
     # Get samples
-    samples = [tokenizer(''.join(req.args)) for req in requests['loglikelihood']]
+    samples = [tokenizer(''.join(req.args)) for req in requests]  # ['loglikelihood']]
     for ix, sample in enumerate(samples):
         # sample_idx, category, query_dict, query_idx
-        samples[ix]['target'] = requests_origin['loglikelihood'][ix][2]['gold']
-        samples[ix]['query_idx'] = requests_origin['loglikelihood'][ix][-1]
-        samples[ix]['category'] = requests_origin['loglikelihood'][ix][1]
+        samples[ix]['target'] = requests_origin[ix][2]['gold']
+        samples[ix]['query_idx'] = requests_origin[ix][-1]
+        samples[ix]['category'] = tasks.index(requests_origin[ix][1])
     
     # for _ix, req in enumerate(requests):
     #     requests_origin[_ix][2]['text'] = ''.join(req.args)
     
-    dataset = convert_to_hf_dataset([tokenizer(''.join(req.args)) for req in requests], cache_dir=cache_dir)
+    dataset = convert_to_hf_dataset(samples, cache_dir=cache_dir)
     if 'batch_size' in loader_kwargs:
         loader_kwargs['batch_size'] = 4  # for now enforce this
     dataloaders = {'eval': get_lm_loader(dataset, tokenizer, 'eval', **loader_kwargs)}
@@ -203,4 +205,5 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
     # Finishing touches
     for k, v in dataloaders.items():  # Make tokenizer accessible
         dataloaders[k].dataset.tokenizer = tokenizer
+        dataloaders[k].categories = tasks
     return dataloaders['eval']

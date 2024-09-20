@@ -37,8 +37,8 @@ class MMLUComputer():
         # self.categories = {}  # {'mmlu-category': {'correct': int, 'total': int, 'acc': float}}
         self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
 
-    def compute_mmlu_loss(self, model: torch.nn.Module, data: torch.Tensor, 
-                          rank: int = 0, local_rank: int = 0):
+    def compute_loss(self, model: torch.nn.Module, data: torch.Tensor, 
+                     rank: int = 0, local_rank: int = 0):
         """Compute MMLU loss"""
         
         input_keys = {'input_ids'}  # , 'attention_mask'} (assume packing / no padding)
@@ -53,8 +53,15 @@ class MMLUComputer():
             losses.append(self.criterion(outputs[choice_idx], targets[choice_idx]))
         losses = torch.stack(losses).cpu()  # b, 1
         pred = torch.argmin(losses, dim=0)
-        correct = data['target'].cpu() == pred
-        return losses, correct, data['category']
+        # print(f'{losses.shape=}')
+        # print(f"{data['target'].shape=}")
+        # print(f"{pred.shape=}")
+        # print(f"{data['target']=}")
+        # print(f"{pred=}")
+        # print(f"{data['category'].shape=}")
+        # print(f"{data['category']=}")
+        correct = data['target'][0].cpu() == pred
+        return losses, correct, data['category'][0]  # same for all of them
 
 
 def evaluate_mmlu(model, train_config, eval_dataloader,
@@ -77,14 +84,17 @@ def evaluate_mmlu(model, train_config, eval_dataloader,
     model.eval()
 
     metrics = {
-        'all': {'total': 0, 'correct': 0}
+        'all': {'correct': 0, 'total': 0}
         # categories: {'total': 0, 'correct': 0}
     }
     
     _epoch = f' {epoch}' if epoch is not None else ''
     pbar = tqdm(eval_dataloader, colour="green", desc=f"Rank {rank} | Eval Epoch{_epoch}", dynamic_ncols=True)
     for step, batch in enumerate(pbar):
-        for key in batch.keys():
+        # print(f'batch.keys()')
+        # for key in batch.keys():
+        #     print(f'{key}: {batch[key]}')
+        for key in ['input_ids', 'attention_mask']:  # batch.keys():
             if train_config.enable_fsdp:
                 batch[key] = batch[key].to(local_rank)
             else:
@@ -96,47 +106,44 @@ def evaluate_mmlu(model, train_config, eval_dataloader,
         # Ensure no gradients are computed for this scope to save memory
         with torch.no_grad():
             # Forward pass and compute loss
-            losses, _correct, _category = loss_computer.compute_loss(model, batch, rank=rank, 
-                                                                     local_rank=local_rank)
+            losses, _correct, _category_idx = loss_computer.compute_loss(model, batch, rank=rank, 
+                                                                        local_rank=local_rank)
             metrics['all']['total'] += 1
-            metrics['all']['correct'] += _correct
+            metrics['all']['correct'] += _correct.int().item()
+
+            _category = eval_dataloader.categories[_category_idx]
             
             if _category in metrics:
                 metrics[_category]['total'] += 1
-                metrics[_category]['total'] += _correct
+                metrics[_category]['correct'] += _correct.int().item()
             else:
-                metrics[_category]['total'] = 1
-                metrics[_category]['total'] = _correct
+                metrics[_category] = {'total': 1, 'correct': _correct.int().item()}
 
             total = metrics['all']['total']
             correct = metrics['all']['correct']
-            total_acc = total / correct * 100
+            total_acc = correct / total * 100
                 
-        pbar.set_description(f"Rank {rank} | Eval Epoch{_epoch} | total acc: {total_acc:.3f}% ({total} / {correct})")
+        pbar.set_description(f"Rank {rank} | Eval Epoch{_epoch} | total acc: {total_acc:.3f}% ({correct} / {total})")
+    
 
-    # If there's more than one CUDA device, reduce evaluation loss across all devices
-    if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
-        for category in metrics:
-            for k, v in metrics[category]:
-                dist.all_reduce(v, op=dist.ReduceOp.SUM)
-    elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:  # what's the diff b/t this condition and above?
-        for category in metrics:
-            for k, v in metrics[category]:
-                dist.all_reduce(v, op=dist.ReduceOp.SUM)
+
+    # # If there's more than one CUDA device, reduce evaluation loss across all devices
+    # if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
+    #     for category in metrics:
+    #         for k, v in metrics[category].items():
+    #             dist.all_reduce(torch.Tensor([v]), op=dist.ReduceOp.SUM)
+    # elif torch.cuda.device_count() > 1 and train_config.enable_fsdp:  # what's the diff b/t this condition and above?
+    #     for category in metrics:
+    #         for k, v in metrics[category].items():
+    #             print(f'{k} before all_reduce:', v)
+    #             dist.all_reduce(torch.Tensor([v]), op=dist.ReduceOp.SUM)
+    #             print(f'{k} after all_reduce:', v)
 
     for k in metrics:
         metrics[k]['acc'] = metrics[k]['correct'] / metrics[k]['total']
 
-    eval_epoch_ppl = torch.exp(eval_epoch_loss).item()
-    eval_epoch_loss = eval_epoch_loss.item()
-    del eval_loss; del batch
+    del batch
     clear_gpu_cache()
-
-    # Print evaluation metrics
-    if local_rank == 0 or not train_config.enable_fsdp:
-        print(f" eval_epoch_loss={eval_epoch_loss}, eval_epoch_ppl={eval_epoch_ppl}")
-
     if wandb_run:
         wandb_run.log(metrics)
-
     return metrics

@@ -1,14 +1,14 @@
 dataset:
   name: eval_mmlu
   dataset_config:
-    lm_evaluation_harness_path: '/juice2/scr2/mzhang/projects/lm-evaluation-harness'
+    lm_evaluation_harness_path: '/home/mzhang/projects/lm-evaluation-harness' # Change this to where you downloaded LM Eval (branch `b281b09`)
     tasks: null  # all of them
     num_fewshot: 5
     limit: null
     cache_dir: 'data/mmlu'  # Change this to where you want to save
   pretrained_model_config:
-    pretrained_model_name_or_path: 'mistralai/Mistral-7B-v0.1'  # will be updated based on model_config
-    cache_dir: '/scr-ssd/mzhang/models/mistral-v0.1'
+    pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b/" # Set this to where you want to save checkpoint weights
   preprocess_config: null
 
 dataloader:
