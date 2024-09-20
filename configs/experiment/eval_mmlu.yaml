@@ -1,0 +1,19 @@
+dataset:
+  name: eval_mmlu
+  dataset_config:
+    lm_evaluation_harness_path: '/juice2/scr2/mzhang/projects/lm-evaluation-harness'
+    tasks: null  # all of them
+    num_fewshot: 5
+    limit: null
+    cache_dir: 'data/mmlu'  # Change this to where you want to save
+  pretrained_model_config:
+    pretrained_model_name_or_path: 'mistralai/Mistral-7B-v0.1'  # will be updated based on model_config
+    cache_dir: '/scr-ssd/mzhang/models/mistral-v0.1'
+  preprocess_config: null
+
+dataloader:
+  batch_size: 4
+  num_workers: 2
+  drop_last: false
+  pin_memory: true
+

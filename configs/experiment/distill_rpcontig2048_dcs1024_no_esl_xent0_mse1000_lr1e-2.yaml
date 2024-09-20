@@ -1,18 +1,24 @@
 dataset:
-  name: redpajama_sample
+  name: redpajama_sample_contig
   dataset_config:
     train_data: 
     - redpajama/train.json[50000]
     eval_data:
     - redpajama/train.json
+    num_train_samples: 20000  # (8 * 2500) * (1024) = 20M
+    max_train_samples: 50000
     max_eval_num: 1000
     max_length: 32768
-    min_length: 1024
+    min_length: 2048
     chat_template: llama-3
     chunk_size: 1024  # sequence length for distilling
     seed: 42
     cache_dir: '/scr-ssd/mzhang/data/long-llm/long-llm/'  # Change this to where you want to save
     load_from_cache_file: true
+    esl_model_config: base_llama3_8b
+    filter_by_esl: false
+    dataloaders_dir: '/scr-ssd/mzhang/projects/lolcats/src/dataloaders'
+     
   pretrained_model_config:
     pretrained_model_name_or_path: 'meta-llama/Meta-Llama-3-8B'
     cache_dir: '/scr-ssd/mzhang/models/llama3'  # Set this to where you want to save checkpoint weights

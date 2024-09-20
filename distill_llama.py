@@ -306,6 +306,9 @@ def main():
         if args.load_finetune_checkpoint is None or args.resume_finetune:
             finetune_config, args = prepare_finetune_configs(args, model_config,
                                                              args.finetune_config)
+            # For now, don't train any softmax attention layers
+            if 'softmax_attentions' in model_config['attention']:
+                finetune_config['finetune']['layers_to_ignore'] = model_config['attention']['softmax_attentions']
             checkpoint_path = args.load_finetune_checkpoint
             model, ft_peft_config = load_and_convert_finetune(model, finetune_config, 
                                                               checkpoint_path=checkpoint_path,
