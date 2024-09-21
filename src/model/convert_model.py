@@ -5,6 +5,9 @@ from functools import partial
 from tqdm import tqdm
 import torch.nn as nn
 
+import sys 
+sys.path.append('./../')
+
 
 def convert_attention(model: nn.Module, 
                       attention_config: dict, 
