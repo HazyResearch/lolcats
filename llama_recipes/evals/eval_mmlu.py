@@ -203,6 +203,8 @@ def evaluate_lm(model, train_config, eval_dataloader,
     correctness = []
     criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     for step, batch in enumerate(pbar):
+        # if step <= 3200:    # FLAG FOR CRASH
+        #     continue
 
         for key in batch.keys():
             if (type(batch[key]) == torch.Tensor):
@@ -221,6 +223,20 @@ def evaluate_lm(model, train_config, eval_dataloader,
             inputs = {k: v.to(model.device) for k, v in batch.items() if k in input_keys} 
 
             bs = inputs['input_ids'].shape[0] 
+            seq_len = inputs['input_ids'].shape[1]
+            if rank == 0 or rank == 10:
+                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
+            if seq_len > 1224:
+                inputs['input_ids'] = torch.concat([
+                    inputs['input_ids'][:, 0:24],
+                    inputs['input_ids'][:, -1200:]
+                ], dim=1)
+                if rank == 0:
+                    print(f"Truncated input_ids to {inputs['input_ids'].shape=}")
+
+                    
+            if rank == 0 or rank == 10:
+                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
 
             outputs = model(**inputs, output_attentions=False, use_cache=False) 
             outputs = outputs.get('logits')[..., -1, :].contiguous()
@@ -246,13 +262,13 @@ def evaluate_lm(model, train_config, eval_dataloader,
         if step % 100 == 0 and rank == 0:
             mmlu_score = sum(correctness) / len(correctness)
             print(f"--> at step {step}, MMLU Score: {mmlu_score}")
-            with open(f"v3_mmlu_predictions_{rank}.pkl", 'wb') as f:
+            with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
                 pickle.dump(correctness, f)
 
     if rank == 0:
         mmlu_score = sum(correctness) / len(correctness)
         print(f"--> at step {step}, MMLU Score: {mmlu_score}")
-        with open(f"v3_mmlu_predictions_{rank}.pkl", 'wb') as f:
+        with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
             pickle.dump(correctness, f) 
 
     del log_probabilities; del batch
