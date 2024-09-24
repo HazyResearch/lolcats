@@ -137,6 +137,10 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention.linear_window_attention_sw_scale import LolcatsSlidingWindowAttention
         return partial(LolcatsSlidingWindowAttention, **kwargs)
 
+    elif attention_type == 'lolcats_llama_window_sw_tiled':
+        from .linear_attention.linear_window_attention_sw_tiled import LolcatsTiledSlidingWindowAttention
+        return partial(LolcatsTiledSlidingWindowAttention, **kwargs)
+
     elif attention_type == 'supra':
         from .linear_attention.supra_attention import SUPRALinearAttention
         return partial(SUPRALinearAttention, **kwargs)

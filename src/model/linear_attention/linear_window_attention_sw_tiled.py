@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tqdm import tqdm
+
 from transformers.cache_utils import Cache
 
 from .linear_attention import (
@@ -84,28 +86,32 @@ def hybrid_attention_quadratic(q: torch.Tensor, k: torch.Tensor,
 # ---------------------
 # Attention layer class
 # ---------------------
-class LolcatsSlidingWindowAttention(LolcatsLinearAttention):
+class LolcatsTiledSlidingWindowAttention(LolcatsLinearAttention):
     """
     Lolcats attention combining sliding window and linear attention
     """
     def __init__(self, 
                  window_size: int = 64, 
+                 tile_size: int = 32,
                  decode_window_size: int = None,
                  affine_attention_factors: bool = False,
                  init_window_factor: float = 0,
                  train_window_factor: bool = True,
                  state_grad_enabled: bool = False,
+                 mse_factor: float = 1e3,
+                 xent_factor: float = 1,  #  1,
                  **kwargs):
         self.window_size = window_size
+        self.tile_size = tile_size
         self.decode_window_size = (
             decode_window_size if decode_window_size is not None else window_size
         )
         self.window_kwargs = {'dimension': 2, 'size': window_size, 'step': 1}
         super().__init__(**kwargs)
-        self.attention_type = kwargs['attention_type']  #  'hedgehog_llama_window_sw'
+        self.attention_type = kwargs['attention_type']  #  'lolcats_llama_window_sw'
         # Determine how we compute attentions
         self.quadratic_attention = hybrid_attention_quadratic
-        self.attention_type = kwargs['attention_type']  # 'hedgehog_long_llama_window_sw'
+        self.attention_type = kwargs['attention_type']  # 'lolcats_long_llama_window_sw'
         # Learnable factor for combining attentions
         self.affine_attention_factors = affine_attention_factors
         device, dtype = self.q_proj.weight.device, self.q_proj.weight.dtype
@@ -119,6 +125,12 @@ class LolcatsSlidingWindowAttention(LolcatsLinearAttention):
         # Whether we use original flash attention 2 inference (use during attention transfer)
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
+
+        # Losses
+        self.criterion_xent = nn.CrossEntropyLoss(reduction='mean')  # stability
+        self.criterion_mse = nn.MSELoss(reduction='mean')
+        self.mse_factor = mse_factor
+        self.xent_factor = xent_factor
         
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -139,21 +151,48 @@ class LolcatsSlidingWindowAttention(LolcatsLinearAttention):
                                                position_ids, past_key_value)
         f_q, f_k = self.feature_map_q(q), self.feature_map_k(k)  # Have to do after repeat for grouped-query attn if we use same fmap
 
+        y_true = []
         if self.train_attention:
-            # 1. Compute "ground-truth" attention output and weights
-            with torch.no_grad():
-                _y_true, a_true = softmax_attention(q, k, v)[:2]
-                y_true = _y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
-                y_true = self.o_proj(y_true)
+            for tile_idx in tqdm(range(l // self.tile_size), leave=False, desc=f'Layer {self.layer_idx} processing attention tiles'):
+                loss = 0
+                loss_mse = 0
+                loss_xent = 0
+                start, end = tile_idx * self.tile_size, (tile_idx + 1) * self.tile_size
+                q_tile, f_q_tile = q[:, :, start:end], f_q[:, :, start:end]
+                k_tile, f_k_tile, v_tile = k[:, :, :end], f_k[:, :, :end], v[:, :, :end]
 
-            # 2. Compute "predicted" attention outputs
-            # compute attn weights under sliding window
-            window_factors = F.sigmoid(self.window_factors)
-            linear_factors = 1 - window_factors if self.affine_attention_factors else 1
-            y_pred, a_pred = self.quadratic_attention(q, k, f_q, f_k, v,
-                                                      window_factors, linear_factors,
-                                                      window_size=self.window_size)
-            attn_weights = ((a_pred, a_true), (y_pred, _y_true))
+                # 1. Compute "ground-truth" attention output and weights
+                with torch.no_grad():
+                    _y_true, a_true = softmax_attention(q_tile, k_tile, v_tile)[:2]
+                    y_true_tile = _y_true.transpose(1, 2).contiguous().view(b, self.tile_size, self.hidden_size)
+                    y_true_tile = self.o_proj(y_true_tile).cpu()
+                    y_true.append(y_true_tile)
+
+                # 2. Compute "predicted" attention outputs
+                # compute attn weights under sliding window
+                window_factors = F.sigmoid(self.window_factors)
+                linear_factors = 1 - window_factors if self.affine_attention_factors else 1
+                y_pred, a_pred = self.quadratic_attention(q_tile, k_tile, f_q_tile, f_k_tile, v_tile,
+                                                          window_factors, linear_factors,
+                                                          window_size=self.window_size)
+                if self.mse_factor > 0:
+                    loss_mse = self.mse_factor * self.criterion_mse(y_pred, _y_true)
+                if self.xent_factor > 0:
+                    k_len = a_pred.shape[-1]
+                    loss_xent = self.xent_factor * self.criterion_xent(
+                        a_pred.contiguous().view(-1, k_len).clamp(min=1e-12).log(), 
+                        a_true.contiguous().view(-1, k_len),
+                    )
+                loss += (loss_mse + loss_xent)
+                # if self.xent_factor > 0:
+                #     breakpoint()
+                if self.feature_map_q.training:
+                    loss.backward()
+                del a_pred; del a_true; del y_pred; del _y_true
+                # except:
+                #     pass
+            attn_weights = (loss.cpu(), loss_mse.cpu(), loss_xent.cpu() if self.xent_factor > 0 else 0)  # hack
+            y_true = torch.cat(y_true, dim=-2).to(q.device)  # b, h, l, d
         else:
             attn_weights = None
             # attention_mask = None  # For now this is always True

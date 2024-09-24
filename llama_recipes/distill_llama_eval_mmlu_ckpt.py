@@ -209,7 +209,7 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'llama' in model_config.model.pretrained_model_name_or_path:
+    if 'lama' in model_config.model.pretrained_model_name_or_path:
         from transformers import LlamaConfig as ModelConfig
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
         from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
