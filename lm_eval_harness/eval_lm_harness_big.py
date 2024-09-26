@@ -207,6 +207,20 @@ def count_params(module) -> int:
     return sum(p.numel() for p in module.parameters())
 
 
+def check_state_dict_keys(_keys, layer_idx, rank=0):
+    try:
+        assert len(_keys.unexpected_keys) == 0
+        if rank == 0:
+            print_header(f'*** All expected keys matched successfully {layer_idx} ***')
+    except Exception as e:
+        if rank == 0:
+            print(e)
+            print_header('*** Error: unexpected keys in checkpoint ***')
+            print(f'Unexpected keys at {layer_idx}:')
+            for k in _keys.unexpected_keys:
+                print(k)
+
+
 def main():
     sys.path.append(LM_EVALUATION_HARNESS_PATH)
     from lm_eval import evaluator
@@ -344,7 +358,8 @@ def main():
                                                             peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                             train_attention=False)
         if True:  # rank == 0:
-            if distill_config.trainer.name is not None or args.attn_mlp_checkpoint_path is not None:
+            # if distill_config.trainer.name is not None or args.attn_mlp_checkpoint_path is not None:
+            if distill_config.trainer.name is not None and args.attn_mlp_checkpoint_path is not None:
                 # if args.replicate == 64:
                 #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
                 # else:
@@ -366,10 +381,15 @@ def main():
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
         if True:  # rank == 0:
-            model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
-                                                cfg=finetune_config, rank=rank)
+            if '.pt' in args.finetune_checkpoint_path:
+                with torch.no_grad():
+                    _keys = model.load_state_dict(torch.load(args.finetune_checkpoint_path), strict=False)
+                    check_state_dict_keys(_keys, 0)
+            else:
+                model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  #  None,
+                                                    cfg=finetune_config, rank=rank)
             
-        if rank == 0:
+        if True:  # if rank == 0:
             print_header('** Sanity check model weights **')
             for n, p in model.named_parameters():
                 # if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):

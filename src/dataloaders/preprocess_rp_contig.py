@@ -208,10 +208,12 @@ def main():
     _data_attr = distill_config['dataset']['dataset_config']['train_data']
     _data_attr = '-d='.join(_data_attr).replace('/', '_').replace('.json', '')
     _data_attr = _data_attr.replace('[','_').replace(']','')
+
+    dataset_config = distill_config.dataset.dataset_config
     
     # fname = f'd={_data_attr}-nts={num_train_samples}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
     fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
-    fname = join('./src/dataloaders', fname)
+    fname = join(dataset_config['dataloaders_dir'], 'redpajama_sample_indices', fname)
 
     # Rank samples by effective sequence length
     _train_esl = train_esl.mean(0).mean(0).mean(-1)  # num_samples

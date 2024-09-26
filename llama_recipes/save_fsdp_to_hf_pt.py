@@ -2,19 +2,44 @@
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
 
 """
-Evaluate MMLU 
+Convert model to .pt state_dict
 
-Example:
+torchrun --nnodes 1 --nproc_per_node 7 llama_recipes/save_fsdp_to_hf_pt.py \
+--model_config distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
+--distill_config distill_redpajama_xent1_mse1000_lr1e-2 \
+--finetune_config finetune_lora_qkvo_redpajama \
+--eval_config eval_alpaca_clean --verbose --replicate 4 --seed 0 --lk_zero_init \
+--eval_steps 10 --dataset_chunk_size 512 --enable_fsdp --low_cpu_fsdp \
+--load_distill_checkpoint /data/rahul/checkpoints/rp_0907/finetune_rp_llama_70b-fac=1-dcs=1024-se=0-re=0-lzi=1 \
+--load_finetune_checkpoint /data/rahul/checkpoints/rp_0907/finetune_rp_llama_70b_qkvo-fac=1-dcs=1024-se=0-re=0-lzi=1-dcs=1024-se=0-re=0 
 
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/distill_llama_eval_mmlu.py \
+
+torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_hf_pt.py \
+--model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
+--distill_config llama3_1_405b/distill_llama_405b_xent0_mse1000_lr1e-3 \
+--finetune_config llama3_1_405b/finetune_llama_405b \
+--eval_config eval_alpaca_clean --verbose --replicate 4 --seed 0 --lk_zero_init \
+--eval_steps 10 --dataset_chunk_size 768 --enable_fsdp --low_cpu_fsdp \
+--load_distill_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/distill-dl-d=llama3_1_405b/distill_llama_405b_xent0_mse1000_lr1e-3-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_llama_405b-fac=1-dcs=768-se=0-re=0-lzi=1 \
+--load_finetune_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/finetune-dl-d=llama3_1_405b/distill_llama_405b_xent0_mse1000_lr1e-3-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_llama_405b-fac=1-dcs=768-se=0-re=0-lzi=1-dcs=768-se=0-re=0
+
+
+torchrun --nnodes 1 --nproc_per_node 7 llama_recipes/save_fsdp_to_hf_pt.py \
 --model_config llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
 --distill_config llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2 \
---finetune_config llama3_1_70b/finetune_rp_llama_70b_qkvo \
---eval_config eval_mmlu_debug \
---verbose --replicate 0 --seed 0 --lk_zero_init --enable_fsdp --low_cpu_fsdp \
---load_distill_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/distill-dl-d=llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/finetune_rp_llama_70b-fac=1-dcs=1024-se=0-re=0-lzi=1 \
---load_finetune_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/finetune-dl-d=llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/finetune_rp_llama_70b_qkvo-fac=1-dcs=1024-se=0-re=0-lzi=1-dcs=1024-se=0-re=0
+--finetune_config llama3_1_70b/finetune_rp_llama_70b \
+--eval_config eval_alpaca_clean --verbose --replicate 4 --seed 0 --lk_zero_init \
+--eval_steps 10 --dataset_chunk_size 1024 --enable_fsdp --low_cpu_fsdp \
+--load_distill_checkpoint  /home/simarora/code/lolcats/checkpoints/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/distill-dl-d=llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/finetune_rp_llama_70b-fac=1-dcs=1024-se=0-re=0-lzi=1 \
+--load_finetune_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/finetune-dl-d=llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/finetune_rp_llama_70b-fac=1-dcs=1024-se=0-re=0-lzi=1-dcs=1024-se=0-re=0
+
+
+
+
+
+torchrun --nnodes 1 --nproc_per_node 7 llama_recipes/save_fsdp_to_hf_pt.py --model_config distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 --distill_config distill_redpajama_xent1_mse1000_lr1e-2 --finetune_config finetune_lora_qkvo_redpajama --eval_config eval_alpaca_clean --verbose --replicate 4 --seed 0 --lk_zero_init --eval_steps 10 --dataset_chunk_size 512 --enable_fsdp --low_cpu_fsdp --load_distill_checkpoint /data/rahul/checkpoints/rp_0907/finetune_rp_llama_70b-fac=1-dcs=1024-se=0-re=0-lzi=1 --load_finetune_checkpoint /data/rahul/checkpoints/rp_0907/finetune_rp_llama_70b_qkvo-fac=1-dcs=1024-se=0-re=0-lzi=1-dcs=1024-se=0-re=0
 """
+from logging import StringTemplateStyle
 import os
 from os.path import join
 # import sys
@@ -50,7 +75,7 @@ from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
 )
 from llama_recipes.trainer_finetune import (
-    train as _train_normal,
+    train,
     setup,
     setup_environ_flags,
     clear_gpu_cache,
@@ -61,13 +86,13 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
     load_sharded_model_single_gpu,
 )
-# from llama_recipes.trainer_finetune_chunked import train as train_chunked
 
 from accelerate.utils import is_xpu_available
 
 # -------------
 # Our arguments
 # -------------
+from safetensors.torch import save_file
 from omegaconf import OmegaConf
 
 from src.utils.setup import (
@@ -87,10 +112,8 @@ from src.model.load_model import (
 )
 from distill_llama import (
     setup_wandb, get_args,  # get_run_name_from_checkpoint
-    setup_fsdp_config
+    get_dataloaders, setup_fsdp_config
 )
-
-from src.dataloaders.eval_mmlu import load_data
 
 
 def main():
@@ -98,19 +121,12 @@ def main():
     # 1. SET UP
     # ---------
     args = get_args()
+    args.enable_fsdp = True
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
 
-    # dl-d=llama3_1_70b/distill_rp_llama_70b_xent1_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/finetune_rp_llama_70b_qkvo-se=0-re=0-lzi=1
-    args.run_name += f'-e={args.eval_config}'
     kwargs = vars(args)
-
-    # if 'finetune_long' in args.finetune_config:
-    #     train = train_chunked
-    # else:
-    #     train = _train_normal
-    train = _train_normal
 
     # Load distillation + attention configs
     distill_config_path = join('./configs/experiment', f'{args.distill_config}.yaml')
@@ -127,10 +143,21 @@ def main():
             model_config.model.device_map = 'auto'
         else:
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
+    model_config.model.low_cpu_mem_usage = True
+
+    print_config(model_config.model)
+    try:
+        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
+            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
+            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    except:
+        print(f"Model without model.pretrained_model_name_or_path_backup path")
+        pass
 
     # Update dataset pretrained model config
-    for k in distill_config.dataset.pretrained_model_config:
-        distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
+    # for k in distill_config.dataset.pretrained_model_config:
+    #     distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
 
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
     
@@ -167,15 +194,10 @@ def main():
         clear_gpu_cache(local_rank)
         setup_environ_flags(rank)
 
-    wandb_run = None
-
-    if not args.no_wandb:
-        if not args.enable_fsdp or rank==0:
-            wandb_run = setup_wandb(distill_config, fsdp_config, **kwargs)  
-
     # ------------------------
     # 2. LOAD PRETRAINED MODEL
     # ------------------------
+
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
     model_loader = get_pretrained_loader(**model_config.model, 
@@ -186,11 +208,10 @@ def main():
 
     use_cache = False if args.enable_fsdp else None
 
-    if 'llama' in model_config.model.pretrained_model_name_or_path:
-        from transformers import LlamaConfig as ModelConfig
-        from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
-        from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
-        model_type = 'llama'
+    from transformers import LlamaConfig as ModelConfig
+    from transformers.models.llama.modeling_llama import LlamaDecoderLayer as DecoderLayer
+    from src.model.modeling_llama import LolcatsLlamaForCausalLM as ModelClass
+    model_type = 'llama'
 
     # Convert model
     try:
@@ -224,11 +245,6 @@ def main():
     model_config.model_name = model_config.model.pretrained_model_name_or_path
     print_model_size(model, model_config, rank if args.enable_fsdp else 0)
 
-    # Prepare the model for int8 training if quantization is enabled
-    # -> But we only use this script for FSDP without quantization
-    # if train_config.quantization:
-    #     model = prepare_model_for_int8_training(model)
-
     # Convert the model to bfloat16 if fsdp and pure_bf16 is enabled
     if args.enable_fsdp and fsdp_config.pure_bf16:
         model.to(torch.bfloat16)
@@ -249,18 +265,12 @@ def main():
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
-        
-        if distill_config.trainer.name is not None:
-            if args.load_distill_checkpoint is not None:
-                model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
-            else:
-                model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
+        if args.load_distill_checkpoint is not None:
+            model = load_sharded_model_single_gpu(model, model_path=args.load_distill_checkpoint, cfg=distill_config, rank=rank)
         else:
-            print(" -> Proceeding without learned linear attentions")
+            model = load_sharded_model_single_gpu(model, model_path=None, cfg=distill_config, rank=rank)
 
-    if wandb_run and distill_peft_config is not None:
-        wandb_run.config.update(distill_peft_config)
-        
+    
     # ----------------------------
     # 4. ADD FINETUNING PARAMETERS
     # ----------------------------
@@ -268,8 +278,6 @@ def main():
                                                      args.finetune_config)
     # finetune_config = update_config_from_args(finetune_config, args)
     finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
-    if args.finetune_lr is not None:
-        finetune_config.model_name += f'=flr={args.finetune_lr}'
             
     # model, ft_peft_config
     model, _ = load_and_convert_finetune(model, finetune_config,
@@ -279,64 +287,33 @@ def main():
                                          peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                          rank=rank)
 
-    if args.load_finetune_checkpoint is not None:
-        model = load_sharded_model_single_gpu(model, model_path=args.load_finetune_checkpoint, cfg=finetune_config, rank=rank)
-    else:
-        print(" -> Proceeding without finetuned parameters")
-    
-
     # ------------------------------------------------------
     # 5. SETUP FSDP AND LOAD DISTILLED ATTENTION CHECKPOINTS
     # ------------------------------------------------------
-    if args.enable_fsdp:
-
-        mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank, model=model_type)
-        my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, DecoderLayer)
-        
-        device_id = 0
-        if is_xpu_available():
-            device_id = torch.xpu.current_device()
-        elif torch.cuda.is_available():
-            device_id = torch.cuda.current_device()
-            print('-> device_id:', device_id)
-
-        model = FSDP(
-            model,
-            auto_wrap_policy=my_auto_wrapping_policy,  # if train_config.use_peft else wrapping_policy,
-            cpu_offload=CPUOffload(offload_params=True) if fsdp_config.fsdp_cpu_offload else None,
-            mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
-            sharding_strategy=fsdp_config.sharding_strategy,
-            # device_mesh=hsdp_device_mesh,
-            device_id=device_id,
-            limit_all_gathers=True,
-            sync_module_states=args.low_cpu_fsdp,  # train_config.low_cpu_fsdp
-            param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
-            if args.low_cpu_fsdp and rank != 0 else None,
-        )
-        if fsdp_config.fsdp_activation_checkpointing:
-            apply_fsdp_checkpointing(model)
-
-        # Load distilled checkpoints
-        if args.verbose and rank == 0:
-            print_header('*** FSDP Model ***')
-            print(model)
-            print('Loading checkpoints from:', distill_config.model_name)
-            
-        # load_model_sharded(model, rank, distill_config, model_path=args.load_distill_checkpoint)
-        
-        if rank == 0 or not args.enable_fsdp:  # debugging
-            print_header('** Sanity check model weights **')
-            for n, p in model.named_parameters():
-                if ('layers.0.' in n and 'base_attn' not in n and 
-                    '.0.mlp.' not in n and '.block_sparse_moe' not in n):
-                    print(f'-> {n}:\n', p)
+    mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank, model=model_type)
+    my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, DecoderLayer)
     
-            
-    else:  # if not model_config.model.quantization and not args.enable_fsdp:
-        if is_xpu_available():
-            model.to("xpu:0")
-        elif torch.cuda.is_available():
-            model.to("cuda")
+    device_id = 0
+    if is_xpu_available():
+        device_id = torch.xpu.current_device()
+    elif torch.cuda.is_available():
+        device_id = torch.cuda.current_device()
+        print('-> device_id:', device_id)
+
+    # Load distilled checkpoints
+    if args.verbose and rank == 0:
+        print_header('*** FSDP Model ***')
+        print(model)
+        print('Loading checkpoints from:', distill_config.model_name)
+        
+    # load_model_sharded(model, rank, distill_config, model_path=args.load_distill_checkpoint)
+    
+    if rank == 0 or not args.enable_fsdp:  # debugging
+        print_header('** Sanity check model weights **')
+        for n, p in model.named_parameters():
+            if ('layers.0.' in n and 'base_attn' not in n and 
+                '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+                print(f'-> {n}:\n', p)
 
     if args.verbose and (rank == 0 or not args.enable_fsdp):
         print_header('*** FSDP MODEL ***')
@@ -345,45 +322,42 @@ def main():
         for n, p in model.named_parameters():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
-        # print_header('*** model.state_dict() ***')
-        # for k in model.state_dict().keys():
-        #     print(f'├── {k}')
+                
+    # Load sharded weights across GPUs into model
+    # ignore_param_rule = lambda n, p: not p.requires_grad
+    # load_model_sharded(model, rank, finetune_config, ignore_param_rule)
+    # model = load_sharded_model_single_gpu(model, model_path=None, cfg=finetune_config, rank=rank)
 
-    # -----------
-    # 5. EVALUATE
-    # -----------
-    from llama_recipes.trainer_eval_mmlu import evaluate_mmlu
-
-    # Get data
-    eval_config = f'./configs/experiment/{args.eval_config}.yaml'
-    eval_config = OmegaConf.load(eval_config)
-    for k in eval_config.dataset.pretrained_model_config:
-        eval_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k, None)
-
-    if rank == 0 or not args.enable_fsdp:
-        print_header('*** Eval Config ***')
-        if args.verbose:
-            print_config(eval_config)
-        
-    eval_dataloader = load_data(**eval_config['dataset'], **eval_config['dataloader'])
+    if args.load_finetune_checkpoint is not None:
+        model = load_sharded_model_single_gpu(model, model_path=args.load_finetune_checkpoint, cfg=finetune_config, rank=rank)
+    else:
+        model = load_sharded_model_single_gpu(model, model_path=None, cfg=finetune_config, rank=rank)
     
-    if not args.enable_fsdp or rank == 0:
-        print(f"--> Validation Set Length = {len(eval_dataloader.dataset)}")
+    
+    if rank == 0:  # debugging
+        print_header('** Sanity check model weights **')
+        for n, p in model.named_parameters():
+            if ('layers.0.' in n and 'base_attn' not in n and 
+                '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+                print(f'-> {n}:\n', p)
 
-    results = evaluate_mmlu(
-        model, 
-        finetune_config, 
-        eval_dataloader,
-        local_rank, 
-        tokenizer,
-        wandb_run,
-        epoch=0,
-        rank=rank,
-    )
+    args.run_name = args.run_name.replace('llama3_1_405b/', '').replace('llama3_1_70b/', '')
 
-    if not args.enable_fsdp or rank==0:
-        for k,v in results.items():
-            print(f'{k}:, {v}')        
+    print(model.config)
+    # model.save_pretrained(f'ckpt-lora_hf-{args.run_name}')
+    if rank == 0:
+        with torch.no_grad():
+            state_dict = model.state_dict()
+            keys_to_keep = [key for key in state_dict.keys() if 'lora' in key or 'window_factors' in key or 'feature_map' in key]
+            # keys_to_keep = [key for key in state_dict.keys() if 'lora' in key]
+            new_state_dict = {key: state_dict[key] for key in keys_to_keep}
+            torch.save(new_state_dict, f'ckpt_lora-{args.run_name}.pt')
+
+        print_header('*** Weights in state_dict ***')
+        for k in torch.load(f'ckpt_lora-{args.run_name}.pt'):
+            print(k)
+        print('-> Checkpoints saved to:', f'ckpt_lora-{args.run_name}.pt')
+        # save_file(new_state_dict, f"ckpt-{args.run_name}.safetensors")
 
 if __name__ == "__main__":
     main()
