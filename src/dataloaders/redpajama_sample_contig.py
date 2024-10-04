@@ -27,6 +27,8 @@ from .redpajama_sample import Data
 
 logger = logging.get_logger(__name__)
 
+CONFIG_DIR = '/home/rahul/code/clean/lolcats/configs'
+
 # Models for computing effective sequence length
 from src.model.pretrained import get_pretrained_loader
 from src.dataloaders.utils import get_tokenizer_from_config, convert_to_hf_dataset
@@ -119,6 +121,8 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
         fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
         fname = join(dataset_config['dataloaders_dir'], fname)
     
+        print(f"{fname=}")
+        print(dataset_config)
         
         try:
             fname = f'd={_data_attr}-mts={max_train_samples}-dcs={chunk_size}-max={max_length}-min={min_length}-s={seed}'
@@ -132,7 +136,7 @@ def load_data(name: str, dataset_config: dict, pretrained_model_config: dict,
             print(f'-> Top {num_train_samples} indices loaded from {fname}!')
         except Exception as e:
             print(f'-> Error with loading from {fname}.npy. Computing...')
-            model, model_config, tokenizer = load_model(config_dir='/home/simarora/code/lolcats/configs',
+            model, model_config, tokenizer = load_model(config_dir=CONFIG_DIR,
                                                         model_config=dataset_config['esl_model_config'])
 
             model.eval()

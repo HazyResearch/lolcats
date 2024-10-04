@@ -36,7 +36,16 @@ class OurTrainer(DefaultTrainer):
         - For each layer and head, get attentions and train to 
           minimize some combo of MSE and cross-entropy loss
         """
-        inputs = {k: v.to(model.device) for k, v in data.items() if k != 'labels'}
+        # input_keys = {'input_ids', 'attention_mask'}
+        # if 'input_ids' not in data:
+        #     data['input_ids'] = data['inputs_embeds']
+        # assert 'input_ids' in data.keys(), f"Data keys: {data.keys()}"
+        inputs = {k: v.to(model.device) for k, v in data.items() if k != 'labels'} 
+
+        # for k, v in inputs.items():
+        #     if (type(v) == torch.Tensor):
+        #         print(f"{k}: {v.shape}")
+
         outputs = model(**inputs, output_attentions=True, use_cache=False)
         outputs = outputs.get('attentions')
         # inputs = {k: v.cpu() for k, v in inputs.items()}  # save gpu memory

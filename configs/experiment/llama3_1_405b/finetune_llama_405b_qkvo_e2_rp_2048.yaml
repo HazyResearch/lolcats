@@ -18,9 +18,9 @@ dataset:
     esl_model_config: llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01
     filter_by_esl: true
     dataloaders_dir: '/home/rahul/code/clean/lolcats/src/dataloaders'
-     
   pretrained_model_config:
     pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+    pretrained_model_name_or_path_backup: "/data/rahul/models/Meta-Llama-3.1-405B/"
     cache_dir: null
   preprocess_config: null
 
@@ -32,7 +32,7 @@ dataloader:
 
 optimizer:
   optim: adamw_torch_fused
-  lr: 0.01
+  lr: 1e-4
   weight_decay: 0.0
 
 lr_scheduler:
@@ -42,24 +42,36 @@ lr_scheduler:
   patience: 10
   min_lr: 0.00001
 
-trainer:  # HuggingFace Trainer-like arguments  
-  name: distill_attention_xent_mse
-  reverse_kl: false
-  mse_factor: 1000
-  xent_factor: 0
-  
+trainer: # HuggingFace Trainer-like arguments
+  name: default_lm
   bf16: true
   train_split: train
   val_split: validation
   num_train_epochs: 2
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 2
   seed: 42
   batch_size: 1
   load_best_model_at_end: true
   greater_is_better: false
-  metric_for_best_model: distill/eval/loss
+  metric_for_best_model: eval/loss # eval/rouge/geometric_mean
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 100
+  eval_steps: 5  # 10
   max_eval_batches: null
+
+finetune:
+  method: lora
+  kwargs:
+    r: 4
+    lora_alpha: 8
+    lora_dropout: 0.05
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+fsdp:
+  save_model: true 
+  run_validation: true
+  use_fp16: false
+  save_optimizer: false
+  gradient_clipping: true  # false
+  gradient_clipping_threshold: 1.0

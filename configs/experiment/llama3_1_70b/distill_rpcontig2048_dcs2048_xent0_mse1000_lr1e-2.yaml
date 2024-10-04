@@ -1,3 +1,4 @@
+
 dataset:
   name: redpajama_sample_contig
   dataset_config:
@@ -15,12 +16,12 @@ dataset:
     seed: 42
     cache_dir: "data/rp"  # Change this to where you want to save
     load_from_cache_file: true
-    esl_model_config: llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01
+    esl_model_config: llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01
     filter_by_esl: true
     dataloaders_dir: '/home/rahul/code/clean/lolcats/src/dataloaders'
      
   pretrained_model_config:
-    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-70B/"
     cache_dir: null
   preprocess_config: null
 
@@ -63,3 +64,5 @@ trainer:  # HuggingFace Trainer-like arguments
   max_steps: -1
   eval_steps: 100
   max_eval_batches: null
+
+

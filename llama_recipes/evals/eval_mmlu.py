@@ -200,7 +200,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
     log_probabilities = defaultdict(dict)
     answers = {}
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank}", dynamic_ncols=True)
-    correctness = []
+    correctness = {}
     criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     for step, batch in enumerate(pbar):
         # if step <= 3200:    # FLAG FOR CRASH
@@ -224,19 +224,15 @@ def evaluate_lm(model, train_config, eval_dataloader,
 
             bs = inputs['input_ids'].shape[0] 
             seq_len = inputs['input_ids'].shape[1]
-            if rank == 0 or rank == 10:
-                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
-            if seq_len > 1224:
-                inputs['input_ids'] = torch.concat([
-                    inputs['input_ids'][:, 0:24],
-                    inputs['input_ids'][:, -1200:]
-                ], dim=1)
-                if rank == 0:
-                    print(f"Truncated input_ids to {inputs['input_ids'].shape=}")
 
-                    
-            if rank == 0 or rank == 10:
-                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
+            if seq_len > 2048:
+                # inputs['input_ids'] = torch.concat([
+                #     inputs['input_ids'][:, 0:24],
+                #     inputs['input_ids'][:, -1200:]
+                # ], dim=1)
+                if rank == 0:
+                    print(f"{step=}: large input_ids {inputs['input_ids'].shape=}")
+                continue  
 
             outputs = model(**inputs, output_attentions=False, use_cache=False) 
             outputs = outputs.get('logits')[..., -1, :].contiguous()
@@ -254,7 +250,7 @@ def evaluate_lm(model, train_config, eval_dataloader,
             if rank == 0:
                 print(f"--> {step=}: {answer=}, {pred=}")
             correct = (answer[0].cpu() == pred)
-            correctness.append(correct)
+            correctness[step] = correct
 
         # free up memory
         del outputs; del inputs; del target_ids; del losses; del pred; del correct
@@ -262,13 +258,13 @@ def evaluate_lm(model, train_config, eval_dataloader,
         if step % 100 == 0 and rank == 0:
             mmlu_score = sum(correctness) / len(correctness)
             print(f"--> at step {step}, MMLU Score: {mmlu_score}")
-            with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+            with open(f"1004_v1_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
                 pickle.dump(correctness, f)
 
     if rank == 0:
         mmlu_score = sum(correctness) / len(correctness)
         print(f"--> at step {step}, MMLU Score: {mmlu_score}")
-        with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+        with open(f"1004_v1_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
             pickle.dump(correctness, f) 
 
     del log_probabilities; del batch
@@ -302,9 +298,27 @@ def main():
         else:
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
 
+    # model paths
+    try:
+        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
+            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
+            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    except: 
+        print(f"Model without model.pretrained_model_name_or_path_backup path")
+        pass
+    if "pretrained_model_name_or_path_backup" in model_config.model:
+        model_config.model.pop("pretrained_model_name_or_path_backup")
+    if "pretrained_model_name_or_path_backup" in distill_config.dataset.pretrained_model_config:
+        distill_config.dataset.pretrained_model_config.pop("pretrained_model_name_or_path_backup")
+    
 
     # Update dataset pretrained model config
+    print(f"{distill_config.dataset.pretrained_model_config=}")
+    print("*****"*10)
+    print(f"{model_config.model=}")
     for k in distill_config.dataset.pretrained_model_config:
+        print(f"{k=}")
         distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
 
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
@@ -350,15 +364,6 @@ def main():
     # ------------------------
     # 2. LOAD PRETRAINED MODEL
     # ------------------------
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except: 
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
     model_loader = get_pretrained_loader(**model_config.model)
