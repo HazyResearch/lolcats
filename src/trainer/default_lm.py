@@ -300,6 +300,9 @@ class OurTrainer():
         step_eval_metrics = {}
         with torch.no_grad():
             for ix, data in enumerate(pbar):
+                
+                # if ix < 3:
+                #     print(f"{data.shape=}")
 
                 loss, eval_metrics = self.compute_loss(model, data)
                 if not self.compute_loss_backprop:
