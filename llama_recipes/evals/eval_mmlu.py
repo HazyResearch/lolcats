@@ -17,6 +17,7 @@ sys.path.append('./src')
 sys.path.append('./../src')
 
 import torch
+from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
 
@@ -199,8 +200,11 @@ def evaluate_lm(model, train_config, eval_dataloader,
     log_probabilities = defaultdict(dict)
     answers = {}
     pbar = tqdm(eval_dataloader,colour="green", desc=f"Rank {rank}", dynamic_ncols=True)
+    correctness = []
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     for step, batch in enumerate(pbar):
-        if step == 800: break 
+        # if step <= 3200:    # FLAG FOR CRASH
+        #     continue
 
         for key in batch.keys():
             if (type(batch[key]) == torch.Tensor):
@@ -216,48 +220,56 @@ def evaluate_lm(model, train_config, eval_dataloader,
         with torch.no_grad():
             # Forward pass and get log probs
             input_keys = {'input_ids'}  
-            inputs = {k: v.to(model.device) for k, v in batch.items() if k in input_keys}  
+            inputs = {k: v.to(model.device) for k, v in batch.items() if k in input_keys} 
+
+            bs = inputs['input_ids'].shape[0] 
+            seq_len = inputs['input_ids'].shape[1]
+            if rank == 0 or rank == 10:
+                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
+            if seq_len > 1224:
+                inputs['input_ids'] = torch.concat([
+                    inputs['input_ids'][:, 0:24],
+                    inputs['input_ids'][:, -1200:]
+                ], dim=1)
+                if rank == 0:
+                    print(f"Truncated input_ids to {inputs['input_ids'].shape=}")
+
+                    
+            if rank == 0 or rank == 10:
+                print(f'Before: {rank=}: {inputs["input_ids"].shape=}')
 
             outputs = model(**inputs, output_attentions=False, use_cache=False) 
-            outputs = outputs.get('logits')[..., :-1, :].contiguous()
-            last_token_logits = outputs[:, -1, :]
-            target_id = batch['target_ids'].to(model.device)[0].item()
-            target_logits = last_token_logits[:, target_id]
-            # print(f"{outputs.shape=}, {last_token_logits.shape=}; {target_logits.shape}; {target_id=}")
-
-            doc_id = batch['doc_id']
-            answer_choice = batch['answer_choice']
+            outputs = outputs.get('logits')[..., -1, :].contiguous()
+            target_ids = batch['target_ids'].to(model.device)
+            losses = []
+            for choice_idx in range(outputs.shape[0]):
+                output = outputs[choice_idx].unsqueeze(0)
+                target = target_ids[choice_idx].view(-1)
+                losses.append(criterion(output, target))
+            losses = torch.stack(losses).cpu()  # b, 1
+            pred = torch.argmin(losses, dim=0)
             answer = batch['answer']
-            if type(doc_id) == list: doc_id = doc_id[0]
-            if type(answer_choice) == list: answer_choice = answer_choice[0]
-            if type(answer) == list: answer = answer[0]
-            if type(answer_choice) == torch.Tensor: answer_choice = answer_choice.item()
-            if type(answer) == torch.Tensor: answer = answer.item()
-            log_probabilities[doc_id][answer_choice] = target_logits.item()
-            answers[doc_id] = answer
+            if type(pred) == torch.Tensor:  # Flagging this logic.
+                pred = pred.item()
+            if rank == 0:
+                print(f"--> {step=}: {answer=}, {pred=}")
+            correct = (answer[0].cpu() == pred)
+            correctness.append(correct)
 
         # free up memory
-        del outputs; del last_token_logits; del target_logits; del target_id
-        clear_gpu_cache()
+        del outputs; del inputs; del target_ids; del losses; del pred; del correct
 
-    # Compute the MMLU score
-    mmlu_score = []
-    doc_to_pred = {}
-    for doc_id, probs in log_probabilities.items(): # contains all the log probs
-        answer = answers[doc_id]
-        best_answer_choice = max(probs, key=lambda x: probs[x])
-        mmlu_score.append(best_answer_choice == answer)
-        doc_to_pred[doc_id] = (best_answer_choice == answer)
-        print_doc_id = " ".join(doc_id.split("\n")[0].split()[:10])
-        print(f"--> Rank {rank} -- Doc id: {print_doc_id}: Answer: {answer}; Predicted: {best_answer_choice}")
-    print(f"--> Problems evaluated: {len(mmlu_score)=}") 
-    mmlu_score = sum(mmlu_score) / len(mmlu_score)
+        if step % 100 == 0 and rank == 0:
+            mmlu_score = sum(correctness) / len(correctness)
+            print(f"--> at step {step}, MMLU Score: {mmlu_score}")
+            with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+                pickle.dump(correctness, f)
 
     if rank == 0:
-        # save the predictions
-        with open(f"mmlu_predictions_{rank}.pkl", 'wb') as f:
-            pickle.dump(doc_to_pred, f)
-        print(f"--> Saved predictions to mmlu_predictions_{rank}.pkl") 
+        mmlu_score = sum(correctness) / len(correctness)
+        print(f"--> at step {step}, MMLU Score: {mmlu_score}")
+        with open(f"v3_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+            pickle.dump(correctness, f) 
 
     del log_probabilities; del batch
     clear_gpu_cache()
@@ -501,10 +513,10 @@ def main():
                 print(f'├── {n} (dtype = {p.dtype})')
 
     print(f"Getting the MMLU dataset:")
-    with open("/home/simarora/data/mmlu/mmlu.pkl", 'rb') as f:
+    with open("/home/rahul/code/clean/lolcats/mmlu.pkl", 'rb') as f:
         data = pickle.load(f)
     dataset = InputDataset(data)
-    dataloader = DataLoader(dataset, shuffle=False, batch_size=1)
+    dataloader = DataLoader(dataset, shuffle=False, batch_size=4)
     if not args.enable_fsdp or rank == 0:
         print(f"--> Validation Set Length = {len(dataloader.dataset)}")
     
@@ -514,7 +526,7 @@ def main():
         local_rank if args.enable_fsdp else None, 
         rank = rank if args.enable_fsdp else None
     )
-    print(f"--> MMLU Score: {mmlu_score}")
+    print(f"--> Final MMLU Score: {mmlu_score}")
 
 if __name__ == "__main__":
     main()
