@@ -65,7 +65,7 @@ class PretrainedModelLoader():
                  cache_dir: str = None,
                  return_dict: bool = True,  # False
                  device_map: str = None,
-                 low_cpu_mem_usage: bool = True,
+                 low_cpu_mem_usage: bool = False,
                  torch_dtype: str = 'bfloat16',
                  rope_theta: float = 10000.,
                  attn_implementation: str = 'sdpa',  # eager
@@ -167,7 +167,9 @@ class PretrainedLlamaLoader(PretrainedModelLoader):
             from transformers import AutoModelForCausalLM as model_class
             print('-> Loading from AutoModelForCausalLM')
 
-        model = model_class.from_pretrained(**self.loading_kwargs, offload_folder="./")
+        self.loading_kwargs['low_cpu_mem_usage'] = False 
+        self.loading_kwargs['device_map'] = None
+        model = model_class.from_pretrained(**self.loading_kwargs)
 
         if self.peft_id is not None:
             from peft import PeftModel

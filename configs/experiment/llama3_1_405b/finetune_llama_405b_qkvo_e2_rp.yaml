@@ -11,10 +11,10 @@ dataset:
     chat_template: llama-3
     chunk_size: 1024  # sequence length for distilling
     seed: 42
-    cache_dir: "/home/simarora/code/lolcats/data/rp"
+    cache_dir: "/home/rahul/code/clean/lolcats/data/rp"
    pretrained_model_config:
-    pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
-    pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
+    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+    pretrained_model_name_or_path_backup: "/data/rahul/models/Meta-Llama-3.1-405B/"
     cache_dir: null
   preprocess_config: null
 
