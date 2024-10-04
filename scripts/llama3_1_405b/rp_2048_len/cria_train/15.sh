@@ -1,6 +1,5 @@
-# status: 
-# - 0924: running 
 
+# running on 0925
 
 export PYTHONPATH=/home/rahul/code/clean/lolcats/  # Change to your path.
 
@@ -10,5 +9,5 @@ CUDA_VISIBLE_DEVICES=1 python llama_recipes/trenchcoat_lolcat//distill_mini_trai
 --distill_config llama3_1_405b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2 \
 --finetune_config llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams_2048 \
 --verbose --replicate 0 --seed 0 \
---layer_idx 0 --layers_per_model 3 --device 0 
+--layer_idx 42 --layers_per_model 3 --device 0  
 
