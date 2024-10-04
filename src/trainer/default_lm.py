@@ -161,6 +161,7 @@ class OurTrainer():
         for ix, data in enumerate(pbar):            
             loss, train_metrics = self.compute_loss(model, data, 
                                                     sample_idx=ix)
+
             loss /= accum_iter
             if not self.compute_loss_backprop:
                 # loss.backward() did not occur in compute_loss
@@ -301,6 +302,12 @@ class OurTrainer():
         with torch.no_grad():
             for ix, data in enumerate(pbar):
 
+                # testing sequence length
+                if type(data) == dict:
+                    if 'input_embeds' in data:
+                        if (type(data['input_embeds']) == torch.Tensor):
+                            print(f"{data['input_embeds'].shape=}")
+
                 loss, eval_metrics = self.compute_loss(model, data)
                 if not self.compute_loss_backprop:
                     loss = loss.item()  # otherwise already float
@@ -344,15 +351,18 @@ class OurTrainer():
         - sample_idx: int, index of batch in dataset
         """
         input_keys = {'input_ids', 'attention_mask'}
+        if 'input_ids' not in data:
+            data['input_ids'] = data['inputs_embeds']
+        assert 'input_ids' in data.keys(), f"Data keys: {data.keys()}"
         inputs = {k: v.to(model.device) 
-                  for k, v in data.items() if k in input_keys}  
+                  for k, v in data.items() if k in input_keys} 
 
         outputs = model(**inputs, output_attentions=False, use_cache=False)  # use_cache=False)
         
         outputs = outputs.get('logits')[..., :-1, :].contiguous()
-        targets = data.get('labels')[..., 1:].contiguous()
+        targets = data.get('labels')[..., 1:].contiguous() 
 
-        # Look at model outputs
+        # Look at model outputs 
         if self.print_samples and sample_idx is not None and (sample_idx + 1) % 100 == 0:
             decode_samples(outputs, targets, self.tokenizer, sample_idx)
 
