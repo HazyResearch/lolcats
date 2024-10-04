@@ -96,4 +96,6 @@ We describe how we ran evaluations for the large models in [this README.md](http
 
 ---
 
-RedPajama data: [https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data]
+Notes: 
+- To install the RedPajama data: [https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data]
+- To use the cria-by-cria distillation approach: we need to set "self.register_buffer("inv_freq", inv_freq, persistent=True) # SA flag" in modeling_llama.py source code.
