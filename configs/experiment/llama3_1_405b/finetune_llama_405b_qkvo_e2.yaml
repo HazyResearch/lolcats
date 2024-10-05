@@ -7,8 +7,8 @@ dataset:
     concat_data: true
     cache_dir: "data/alpaca"
   pretrained_model_config:
-    pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
-    pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
+    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+    pretrained_model_name_or_path_backup: "/data/rahul/models/Meta-Llama-3.1-405B/"
     cache_dir: null
   preprocess_config: null
 

@@ -137,7 +137,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         Forward pass with the option to compute attention weights multiple ways
         if self.train_attention is True
         -> Consistent with HuggingFace Transformers for easy use with their pretrained models
-        """
+        """ 
         b, l, _ = hidden_states.size()
         q, k, v, kv_seq_len = self.process_qkv(hidden_states, attention_mask, 
                                                position_ids, past_key_value)
@@ -386,9 +386,6 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
         """
         Update the decoding KV and K states, and KV cache, during decodeing
         """
-
-        # breakpoint()  
-
         with torch.no_grad():
             k_cache = self.k_cache[layer_idx]
             v_cache = self.v_cache[layer_idx]
@@ -399,7 +396,6 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
             else:
                 k_state = feature_map_k(k_cache[:, :, :1, :])  
                 print(f"{feature_map_k.layer=}")     
-                # breakpoint()
                 v_state = v_cache[:, :, :1, :]
                 kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
                 self.decode_kv_states[layer_idx] += kv_state

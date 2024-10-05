@@ -28,8 +28,6 @@ llama_recipes/save_llama_attn_inputs.py \
 """
 import os
 from os.path import join
-# import sys
-# sys.path.append('/workspace/lolcats')  # needed for vast-ai instances
 import dataclasses
 import random
 import argparse  # ours
@@ -48,7 +46,6 @@ from torch.distributed.fsdp import (
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
 
 from llama_recipes.configs import fsdp_config as FSDP_CONFIG
-# from llama_recipes.configs import train_config as TRAIN_CONFIG
 from llama_recipes.policies import AnyPrecisionAdamW, apply_fsdp_checkpointing
 
 from llama_recipes.utils.fsdp_utils import fsdp_auto_wrap_policy
@@ -70,7 +67,6 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
     load_sharded_model_single_gpu,
 )
-# from llama_recipes.trainer_finetune_chunked import train as train_chunked
 
 from accelerate.utils import is_xpu_available
 
@@ -86,7 +82,7 @@ from src.utils.setup import (
 from src.utils.logging import print_header, print_config
 from src.trainer import get_scheduler
 
-from src.finetune import prepare_finetune_configs  # get_finetuner
+from src.finetune import prepare_finetune_configs 
 
 from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import (
@@ -102,7 +98,8 @@ from tqdm import tqdm
 
 CUTOFF_BATCH = 20   # Save to disk and delete tensors every CUTOFF_BATCH
                      # to save CPU memory
-
+DATA_DIR = "/data_ephemeral/sim/"   # mk-xii
+DATA_DIR = "/data/simran/"  # mk-turbo
 
 def main():
     # ---------
@@ -157,6 +154,8 @@ def main():
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
 
     # Update dataset pretrained model config
+    print(distill_config)
+    print(model_config)
     for k in distill_config.dataset.pretrained_model_config:
         distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
     
@@ -303,14 +302,18 @@ def main():
     # -----------------------------------
     layer_interval = args.layers_per_model 
     assert layer_interval > 0, print("Need to pass in args.layers_per_model")
-    save_dir = f"/data_ephemeral/sim/{model_name}-interval{layer_interval}"
+    save_dir = f"{DATA_DIR}/{model_name}-interval{layer_interval}"
     os.makedirs(save_dir, exist_ok=True) 
 
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
     seqlen = distill_config.dataset['dataset_config']['chunk_size']
     for split, dataloader in {'train': train_dataloader, 'validation': eval_dataloader}.items():
+
+        if split == 'validation': continue  # Skip validation for now (RP Contig)
+        
         if rank == 0 or not args.enable_fsdp:
             print_header(f'*** Computing layer-wise {split} outputs ***')
+            print(f"Layer range is min = {args.layers_limit_min}, max = {args.layers_limit_max}")
 
         attn_inputs_by_layer = [[] for _ in range(len(model.model.layers))]
         max_layer_digits = len(str(len(attn_inputs_by_layer)))
@@ -319,7 +322,6 @@ def main():
             pbar = tqdm(dataloader, desc=f'❯❯❯ Computing layer-wise outputs on rank {rank} for {split} split')
             max_digits = len(str(len(pbar)))
             for step, batch in enumerate(pbar):
-                if step > 5000: break   # SA Flag
 
                 batch = {'input_ids': batch['input_ids']}
                 key = 'input_ids'
@@ -342,12 +344,17 @@ def main():
                 if args.enable_fsdp:
                     dist.barrier()
 
+                # Save layer-wise outputs to disk
                 if (step + 1) % CUTOFF_BATCH == 0:  # Flag
-                    # Save layer-wise outputs to disk
                     for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
-                        # if (layer_idx in filtered_layers):  # SA Flag
                         if layer_idx % layer_interval == 0: 
-                            attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+                            if (layer_idx >= args.layers_limit_min and
+                                layer_idx < args.layers_limit_max):
+                                pass 
+                            else:
+                                continue
+
+                            attn_inputs = torch.cat(attn_inputs, dim=0) 
                             fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
                             torch.save(attn_inputs, fpath)
                     print(f'-> Saved {rank} layer-wise tensors for {split} to {save_dir}!')
@@ -358,8 +365,13 @@ def main():
         # Save layer-wise outputs to disk
         for layer_idx, attn_inputs in enumerate(attn_inputs_by_layer):
             if layer_idx % layer_interval == 0: 
-            # if (layer_idx in filtered_layers):   # SA Flag
-                attn_inputs = torch.cat(attn_inputs, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+                if (layer_idx >= args.layers_limit_min and
+                    layer_idx < args.layers_limit_max):
+                    pass 
+                else:
+                    continue
+
+                attn_inputs = torch.cat(attn_inputs, dim=0)  
                 fpath = join(save_dir, f'attn_inputs-r={rank}-l={layer_idx:0{max_layer_digits}d}-s={split}-len{seqlen}-b={step:0{max_digits}d}.pt')
                 torch.save(attn_inputs, fpath)
         print(f'-> Saved {rank} layer-wise tensors for {split} to {save_dir}!')

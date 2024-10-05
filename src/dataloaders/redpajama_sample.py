@@ -27,6 +27,9 @@ from .utils.packing import ConcatDataset
 logger = logging.get_logger(__name__)
 
 
+LONG_LLM_DIR = '/data/long-llm/'
+
+
 def get_lm_loader(dataset: Dataset, tokenizer: AutoTokenizer, 
                   split: str, max_length: int = None, **loader_kwargs: any):
     """
@@ -167,7 +170,7 @@ class Data:
 
             else:
                 # the dataset is a json file
-                data_file = os.path.join('/home/simarora/code/lolcats/data/long-llm/', data_file)
+                data_file = os.path.join(LONG_LLM_DIR, data_file)
                 cache_dir = '/'.join(data_file.split('/')[:-1])
                 print('cache_dir', cache_dir)
                 dataset = datasets.load_dataset('json', data_files=data_file, split='train', cache_dir=cache_dir)
@@ -218,7 +221,7 @@ class Data:
 
         random.seed(seed)
 
-        data_files = os.path.join('/home/simarora/code/lolcats/data/long-llm/', data_files[0])
+        data_files = os.path.join(LONG_LLM_DIR, data_files[0])
         cache_dir = '/'.join(data_files.split('/')[:-1])
         print('cache_dir', cache_dir)
 

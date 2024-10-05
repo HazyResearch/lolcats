@@ -201,8 +201,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                 # pbar.set_description(f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float():.5f}, lr: {optimizer.param_groups[0]['lr']:.5f})")
                 pbar.set_description(f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed ({metrics})")
 
-                if train_config.save_metrics:
-                    save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
+                # if train_config.save_metrics:
+                #     save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
 
                 if total_step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic

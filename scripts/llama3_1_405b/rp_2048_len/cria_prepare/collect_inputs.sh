@@ -3,12 +3,12 @@
 #SBATCH --account=root
 #SBATCH --partition=batch
 #SBATCH --nodes=2
-#SBATCH --nodelist=mk-xii-01,mk-xii-20                # TODO change to your nodenames
+#SBATCH --nodelist=mk-turbo-02,mk-turbo-04  # TODO change to your nodenames
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=22
 #SBATCH --time=2000:00:00
-#SBATCH --output=/home/simarora/utils/slurm_logs/slurm-%j.out   # TODO change to your folder
-#SBATCH --error=/home/simarora/utils/slurm_logs/slurm-%j.err
+#SBATCH --output=/home/rahul/code/clean/slurm/slurm-%j.out   # TODO change to your folder
+#SBATCH --error=/home/rahul/code/clean/slurm/slurm-%j.err
 
 # Initialize HPC-X toolkit for high-performance computing
 . /opt/hpcx/hpcx-init.sh
@@ -23,18 +23,19 @@ export NCCL_P2P_DISABLE=0  # Enable peer-to-peer communication between GPUs
 export NCCL_BUFFSIZE=2097152  # Set 2MB buffer size for NCCL operations
 export NCCL_IB_HCA=mlx5  # Specify the InfiniBand Host Channel Adapter to use
 
-export MASTER_HOSTNAME="mk-xii-20"                      # # TODO change to your nodenames
+export MASTER_HOSTNAME="mk-turbo-02"  #  TODO change to your nodenames
 export MASTER_ADDR=$(host $MASTER_HOSTNAME | awk '/has address/ { print $4 }')
 export MASTER_PORT=29500
 
-export PYTHONPATH=/home/simarora/code/lolcats/          # TODO change to your folder
+export PYTHONPATH=/home/rahul/code/clean/lolcats/   #  TODO change to your folder
 
 # Save the model outputs
 srun  torchrun --nnodes 2 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/trenchcoat_lolcat/save_llama_attn_inputs.py \
 --model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_405b/distill_rpcontig2048_dcs1024_xent0_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams \
+--distill_config llama3_1_405b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2 \
+--finetune_config llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams_2048 \
 --verbose --replicate 0 --seed 0 \
 --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing  \
---layers_per_model 3 --layers_limit 39 --layers_min_limit 0
+--layers_per_model 3 --layers_limit_max 127 --layers_limit_min 102
 
+ 

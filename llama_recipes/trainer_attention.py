@@ -276,8 +276,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer,
                     desc += f" | {k}: {v:.5f}"
                 pbar.set_description(desc)
 
-                if train_config.save_metrics:
-                    save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
+                # if train_config.save_metrics:
+                #     save_to_json(metrics_filename, train_step_loss, train_loss, val_step_loss, val_loss)
 
                 if step == getattr(train_config, 'num_train_steps', -1):
                     break  # Early exit for debugging later logic
@@ -384,6 +384,7 @@ def eval_loop(model, evaluate_func, optimizer, lr_scheduler,
     checkpoint_start_time = time.perf_counter()
 
     # train_config.save_model = False
+    train_config.save_model = True
     if train_config.save_model and eval_epoch_loss < best_val_loss:
         if train_config.enable_fsdp:
             dist.barrier()
@@ -680,3 +681,5 @@ def save_to_json(output_filename,
     }
     with open(output_filename, "w") as f:
         json.dump(metrics_data, f)
+
+
