@@ -1,6 +1,8 @@
 """
 Inherit from lm-evaluation-harness/lm_eval/models/huggingface.py to load Hedgehog models
 """
+
+breakpoint()
 from lm_eval.models.huggingface import AutoCausalLM
 from src.model.modeling_llama import LolcatsLlamaForCausalLM as LOLCATS_LLAMA_MODEL_CLASS
 from src.model.modeling_mistral import LolcatsMistralForCausalLM as LOLCATS_MISTRAL_MODEL_CLASS
