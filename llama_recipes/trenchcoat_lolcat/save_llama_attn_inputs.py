@@ -307,6 +307,8 @@ def main():
 
     model_name = model_config.model['pretrained_model_name_or_path'].replace("/", "-")
     seqlen = distill_config.dataset['dataset_config']['chunk_size']
+    print(f"-> Saving layer-wise tensors to {save_dir}")
+    print(f"-> Length of sequences = {seqlen}")
     for split, dataloader in {'train': train_dataloader, 'validation': eval_dataloader}.items():
 
         if split == 'validation': continue  # Skip validation for now (RP Contig)

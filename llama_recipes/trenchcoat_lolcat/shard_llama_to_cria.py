@@ -51,6 +51,8 @@ from llama_recipes.utils.fsdp_utils import (
 from src.model.convert_model import toggle_attention, remove_base_attention, traverse_layers
 
 
+CHECKPOINT_DIR = f"/data/simran/"
+
 def get_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
@@ -135,12 +137,13 @@ class LlamaMiniDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int, 
                  apply_input_layernorm: bool = True):
         super().__init__()
+
+        self.layer_idx = layer_idx
         self.hidden_size = config.hidden_size
         self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
         self.mlp = LlamaMLP(config)
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
         self.apply_input_layernorm = apply_input_layernorm  # Hack, but patch for saving attention inputs
 
     def forward(
@@ -231,21 +234,9 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    checkpoint_dir = f"/data_ephemeral/sim/sharded_layers_405b_interval{args.layers_per_model}/"
-    # checkpoint_dir = "/data_ephemeral/sim/sharded_layers_70b/"
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = int(os.environ["RANK"])
-
-    # Where to save the output model checkpoints?
-    checkpoint_dir = join(checkpoint_dir, args.model_config)
-    if not os.path.isdir(checkpoint_dir) and ((args.enable_fsdp and rank == 0 and local_rank == 0) or not args.enable_fsdp):
-        os.makedirs(checkpoint_dir)
-
-        # Save individual .pt model weights in a subdirectory
-        checkpoint_dir = join(checkpoint_dir, 'sharded_layers')
-        if not os.path.isdir(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
 
     kwargs = vars(args)
 
@@ -297,6 +288,26 @@ def main():
         else:
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
     model_config.model.low_cpu_mem_usage = True
+
+
+    # Where to save the output model checkpoints?
+    model_name = model_config.model.pretrained_model_name_or_path
+    if "405" in model_name:
+        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_405b_interval{args.layers_per_model}"
+    elif "70" in model_name:
+        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_70b_interval{args.layers_per_model}"
+    elif "8" in model_name:
+        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_8b_interval{args.layers_per_model}"
+    else:
+        raise ValueError(f"Model name {model_name} not recognized.")
+    checkpoint_dir = join(checkpoint_dir, args.model_config)
+    if not os.path.isdir(checkpoint_dir) and ((args.enable_fsdp and rank == 0 and local_rank == 0) or not args.enable_fsdp):
+        os.makedirs(checkpoint_dir)
+
+        # Save individual .pt model weights in a subdirectory
+        checkpoint_dir = join(checkpoint_dir, 'sharded_layers')
+        if not os.path.isdir(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
 
     try:
         if not os.path.exists(model_config.model.pretrained_model_name_or_path):
@@ -390,6 +401,12 @@ def main():
     with torch.no_grad():
         first = 0
         for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
+            if layer_idx < 40: 
+                first = layer_idx + 1
+                continue 
+            if layer_idx > 50: 
+                first = layer_idx + 1
+                continue
             print(f'Saving layer attentions to {checkpoint_dir}...')
             
             pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
@@ -397,12 +414,12 @@ def main():
             print(pretrained_fname)
             if layer_idx == 0 and rank == 0: 
                 print(layer.state_dict().keys())
-
             
             mini_init[layer_idx % args.layers_per_model] = True
-            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict()) # SA Flag
-            if (layer_idx + 1) % args.layers_per_model == 0: 
+            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict()) # SA
+            # breakpoint()
 
+            if (layer_idx + 1) % args.layers_per_model == 0: 
                 if rank == 0: 
                     print(f"{layer_idx=}")
 
@@ -413,6 +430,7 @@ def main():
 
                 if rank == 0 or not args.enable_fsdp:
                     print(f"Initialized?\n{mini_init=}")
+                    # breakpoint()
                     torch.save(mini_llama.state_dict(), pretrained_fname)
                     print(f"Saved to: {pretrained_fname}!")
 
