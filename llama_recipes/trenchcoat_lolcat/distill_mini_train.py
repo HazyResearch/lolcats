@@ -77,6 +77,9 @@ from src.model.convert_model import toggle_attention, remove_base_attention, tra
 from src.model.utils import count_parameters
 from src.model.convert_model import get_attention
 
+CHECKPOINT_DIR = f"/data/simran/sharded_layers_70b_interval5/" 
+DATA_DIR = "/data/simran/_data_rahul_models_Meta-Llama-3.1-70B_-interval5/"
+
 
 def get_args():
     """Parse command line arguments"""
@@ -148,112 +151,6 @@ def get_args():
     return args
 
 
-# ------------------------------
-# Precomputed Tensor Dataloaders
-# ------------------------------
-class AttentionInputDataset(Dataset):
-    """
-    Tensor dataset for LlamaAttention model
-    """
-    def __init__(self, tensors: torch.Tensor):
-        self.samples = tensors
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        x = self.samples[idx]
-        position_ids = torch.arange(x.shape[-2])
-        return {'inputs_embeds': x, 'position_ids': position_ids}
-
-# Data loader that we used for alpaca
-# def load_data(data_dir: str, layer_idx: int, max_layer: int = 32, 
-#               **loader_kwargs: any):
-#     """
-#     Specific function to load attention input dataloaders
-#     """
-#     max_layer_digits = len(str(max_layer))
-
-#     dataloaders = {'train': None, 'validation': None}
-#     for split in dataloaders:
-#         sample_tensors = []
-        
-#         for i, f in enumerate(tqdm(os.listdir(data_dir))):
-#             bs = int(f.split('-b=')[1].split('.')[0])
-#             if bs > 1400: 
-#                 _act_split = "validation"
-#             else:
-#                 _act_split = "train"
-
-#             # Filter and load naïvely 
-#             if f'-l={layer_idx:0{max_layer_digits}d}-s={split}' in f:
-#                 print(f"Adding {f=}")
-#                 sample_tensors.append(torch.load(join(data_dir, f)))
-                
-#         samples = torch.cat(sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
-#         _dataset = AttentionInputDataset(samples)
-#         _dataloader = DataLoader(_dataset, shuffle=True if split == 'train' else False,
-#                                  **loader_kwargs)
-#         dataloaders[split] = _dataloader
-#     return dataloaders
-
-# Data loader for RP data -- need more manual construction of the train and val sets
-def load_data(data_dir: str, layer_idx: int, max_layer: int = 32, 
-              **loader_kwargs: any):
-    """
-    Specific function to load attention input dataloaders
-    """
-    max_layer_digits = len(str(max_layer))
-
-    dataloaders = {'train': None, 'validation': None}
-    train_sample_tensors = []
-    val_sample_tensors = []
-    for i, f in enumerate(tqdm(os.listdir(data_dir))):
-        bs = int(f.split('-b=')[1].split('.')[0])
-
-        # Filter and load naïvely 
-        if f'-l={layer_idx:0{max_layer_digits}d}-s=train' in f:
-            
-            # for our crias
-            end_train = 750
-            end_val = end_train + 50
-
-            if bs > end_train and bs < end_val: 
-                try:
-                    data = torch.load(join(data_dir, f))
-                    val_sample_tensors.append(data)
-                    print(f"Adding to val: {f=}")
-                except:
-                    print(f"Failed to load {f=}")
-                    continue
-            elif bs <= end_train:
-                try:
-                    data = torch.load(join(data_dir, f))
-                    train_sample_tensors.append(data)
-                    print(f"Adding to train: {f=}")
-                except:
-                    print(f"Failed to load {f=}")
-                    continue
-            else:
-                continue
-
-    print(f"{len(train_sample_tensors)=}, {len(val_sample_tensors)=}")
-
-    # save train
-    train_samples = torch.cat(train_sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
-    _dataset = AttentionInputDataset(train_samples)
-    _dataloader = DataLoader(_dataset, shuffle=True, **loader_kwargs)
-    dataloaders['train'] = _dataloader
-
-    # save validation 
-    val_samples = torch.cat(val_sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
-    _dataset = AttentionInputDataset(val_samples)
-    _dataloader = DataLoader(_dataset, shuffle=False, **loader_kwargs)
-    dataloaders['validation'] = _dataloader
-    print(f"Got dataloaders!")
-    return dataloaders
-
-
 # -----------
 # Mini Llamas
 # -----------
@@ -261,6 +158,7 @@ class LlamaMiniDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int, 
                  apply_input_layernorm: bool = True):
         super().__init__()
+        self.layer_idx = layer_idx
         self.hidden_size = config.hidden_size
         self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
         self.mlp = LlamaMLP(config)
@@ -285,10 +183,13 @@ class LlamaMiniDecoderLayer(nn.Module):
         
         residual = hidden_states
 
+        # print(f"Layer {self.layer_idx}")
+        # breakpoint()
         if self.apply_input_layernorm:  # Ours
-            hidden_states = self.input_layernorm(hidden_states)
+            hidden_states = self.input_layernorm(hidden_states) # SA: these layernorm weights are the issue.
 
         # Self Attention
+        # breakpoint()
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
@@ -303,6 +204,7 @@ class LlamaMiniDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states
 
         # Fully Connected
+        # breakpoint()
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
@@ -400,10 +302,9 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    # checkpoint_dir = "/data_ephemeral/sim/sharded_layers_405b/" # SA Flag
-    checkpoint_dir = f"/data_ephemeral/sim/sharded_layers_405b_interval{args.layers_per_model}/" # SA Flag
 
     # Where to save the output model checkpoints?
+    checkpoint_dir = CHECKPOINT_DIR
     checkpoint_dir = join(checkpoint_dir, args.model_config)
     if not os.path.isdir(checkpoint_dir):
         os.makedirs(checkpoint_dir)
@@ -438,10 +339,15 @@ def main():
 
     # Get data directory for layer-wise input tensors
     dataset_name = distill_config.dataset.name
-    # cache_dir = "/data_ephemeral/sim/-scratch-rahul-models-Meta-Llama-3.1-405B/" # SA Flag
-    # cache_dir = "/data_ephemeral/sim/_scratch_rahul_models_Meta-Llama-3.1-405B-interval1/" # SA Flag
-    cache_dir = "/data_ephemeral/sim/_scratch_rahul_models_Meta-Llama-3.1-405B-interval9/"
-    # cache_dir = distill_config.dataset.dataset_config.cache_dir
+    if dataset_name == "redpajama_sample_contig": 
+        from get_data import load_data_redpajama_contig as load_data
+    elif dataset_name == "redpajama_sample":
+        from get_data import load_data_redpajama as load_data
+    elif "alpaca" in dataset_name:
+        from get_data import load_data_alpaca as load_data
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+    cache_dir = DATA_DIR
     model_name = model_config.model.pretrained_model_name_or_path.replace('/', '_')
 
     # training on one gpu
@@ -536,12 +442,18 @@ def main():
         pretrained_fname = pretrained_fname.replace("distill_llama3_1_405b_lk_smd_wtk64_fd256_w01", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
         pretrained_fname = pretrained_fname.replace("distill_llama3_1_405b_lk_smd_wtk64_fd128_w01", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
 
+        # breakpoint()
         ckpt = torch.load(pretrained_fname, map_location='cpu')
         print(ckpt.keys())
         teacher_mini_llama.load_state_dict(ckpt, assign=True)
         print_header('All teacher weights loaded successfully')
     for p in teacher_mini_llama.parameters():   # Freeze all layers
         p.requires_grad = False
+
+    # args.run_name='dl-d=llama3_1_70b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/rp_contig_finetune_llama_70b_qv_hparams_2048-s=0-se=0-re=0-in=40-out=44'    
+
+    # Saved to: /data/simran//sharded_layers_70b_interval5/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/_data_rahul_models_Meta-Llama-3.1-70B_-in=40-out=44.pt!
+    # '/data/simran/sharded_layers_405b_interval5/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/_data_rahul_models_Meta-Llama-3.1-70B_-in=40-out=44.pt'
 
     student_mini_llama = copy.deepcopy(teacher_mini_llama)
     student_mini_llama = load_and_convert_attns(student_mini_llama, model_config,

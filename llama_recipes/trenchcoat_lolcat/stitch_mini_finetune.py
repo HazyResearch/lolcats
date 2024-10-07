@@ -3,6 +3,19 @@ This file just needs to save out the shards for 405B.
 
 Notes:
 - Make sure that register_buffer inv_freq persistent=True for your modelling_llama.py 
+
+
+/home/simarora/code/lolcats/checkpoints/dl-d=llama3_1_405b/rp_distill_llama_405b_xent1_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b
+
+python llama_recipes/stitch_mini_405b_sim2_rp_2048.py \
+--model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
+--distill_config llama3_1_405b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2 \
+--finetune_config llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams_2048 \
+--final_finetune_config llama3_1_405b/finetune_llama_405b_qkvo_e2_rp_2048 \
+--verbose --replicate 0 --seed 0 \
+--layers_per_model 3 --layer_idx 0 \
+--enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing
+
 """
 
 import os
@@ -190,8 +203,11 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    CHECKPOINT_DIR_405B = "/home/simarora/code/lolcats/checkpoints/"  #  "/data_ephemeral/sim/sharded_layers_405b/"
-    CHECKPOINT_MODEL_CONFIG = 'llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01'
+    CHECKPOINT_DIR_405B = "/home/rahul/code/clean/lolcats/checkpoints" 
+    CHECKPOINT_MODEL_CONFIG = 'llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01'
+
+    if "70b"  in CHECKPOINT_MODEL_CONFIG:
+        dirpath = "llama3_1_70b"
 
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -257,9 +273,6 @@ def main():
             _run_name = args.run_name
             kwargs = vars(args)
             kwargs['run_name'] = _run_name
-            if args.final_finetune_config is not None:  # Update checkpoint for e2e finetune and lora loading
-                kwargs['run_name'] += f'-ef={args.final_finetune_config}'
-            kwargs['run_name'] += f'-ft_lora={args.load_finetuned_loras}'.replace('True', '1').replace('False', '0')
             wandb_run = setup_wandb(distill_config, fsdp_config, **kwargs,
                                     project=args.project_name, entity=args.wandb_entity)
 
@@ -362,8 +375,7 @@ def main():
                 new_k_idx = k_idx + start_layer_idx
                 new_k_name = k.replace(k_name, str(new_k_idx))
                 new_state_dict[new_k_name] = v
-                if start_layer_idx > 9 and start_layer_idx < 18: 
-                    print(f"Renaming {k} to {new_k_name}")
+                print(f"Renaming {k} to {new_k_name}")
             else:
                 new_state_dict[k] = v
         return new_state_dict
@@ -372,15 +384,6 @@ def main():
         with torch.no_grad():
             first = 0
             for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
-                # file name
-                # load_file_name = f'{join(CHECKPOINT_DIR_405B, args.run_name)}'
-                # max_digits = len(str(num_hidden_layers))
-                # start, end = first, first + (args.layers_per_model - 1)
-                # name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-                # load_file_name += f'-{name_suffix}' 
-                # load_file_name = load_file_name.replace('True', '1').replace('False', '0')  # concise hacks
-                # load_file_name = load_file_name +  f'_distill.pt'
-
                 load_file_name = join(CHECKPOINT_DIR_405B, f'dl-d={args.distill_config}-m={CHECKPOINT_MODEL_CONFIG}-f={args.finetune_config}')
                 load_file_name += f'-s={args.seed}-se={args.seed}-re={args.replicate}'
                 max_digits = len(str(num_hidden_layers))
@@ -391,25 +394,20 @@ def main():
                 
                 if (layer_idx + 1) % args.layers_per_model == 0:
                     if rank == 0 or not args.enable_fsdp:
-                        print(f'Loading layer attentions from {CHECKPOINT_DIR_405B}...')
+                        print(f'Loading layer attentions from {CHECKPOINT_DIR_405B} .. {load_file_name}...')
                         mini_weights = torch.load(load_file_name)['model_state_dict']
                         mini_weights = rename_state_dict(mini_weights, first)
                         _keys = model.load_state_dict(mini_weights, strict=False)
                         check_state_dict_keys(_keys, first)
                     first = layer_idx + 1
-            # args.run_name += f'-{name_suffix}'  # dealing with legacy naming
-
     
     # Step 4. Add finetuning parameters. 
     final_finetune_config, args = prepare_finetune_configs(args, model_config, 
                                                            args.final_finetune_config)
     final_finetune_config = setup_fsdp_config(final_finetune_config, args, 'finetune',
-                                              output_dir='/home/mzhang/projects/lolcats/results/llama3_1_405b')  # hardcode
+                                              output_dir=f'/home/rahul/code/clean/lolcats/results/{dirpath}')
 
     args.finetune_lr = None 
-    # if args.finetune_lr is not None:
-    #     final_finetune_config.model_name += f'=flr={args.finetune_lr}'
-    
     model, _ = load_and_convert_finetune(model, final_finetune_config,
                                          checkpoint_path=None,
                                          print_model=args.verbose,
@@ -423,20 +421,8 @@ def main():
         print(f"Loading loras")
         with torch.no_grad():
             first = 0
-            # args.run_name = finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-bs=1-gas=8-nte=2-ms=-1-se=0-re=0-in=000-out=008_ft.pt
 
             for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
-                # example file names: 
-                # ./checkpoints/ft-dl-d=0000_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=000-out=008-se=0-re=0_ft.pt
-                # ./checkpoints/ft-dl-d=0001_out=125_distill1d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125-se=0-re=0_ft.pt
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=099-out=107_distill.pt'
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=108-out=116_distill.pt'
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125_distill.pt'
-
-                # ft-dl-d=0000_out=098_distill0d-m=llama3_1_405b  # matching based on assuming we loaded in the distill checkpoints last time
-                # ft-dl-d=0000_out=107_distill1d-m=llama3_1_405b
-                # ft-dl-d=0001_out=116_distill1d-m=llama3_1_405b
-                
                 # Get distill checkpoint name first
                 # load_file_name = f'{join(args.checkpoint_dir, args.run_name)}'
                 load_file_name = join(CHECKPOINT_DIR_405B, f'dl-d={args.distill_config}-m={CHECKPOINT_MODEL_CONFIG}-f={args.finetune_config}')
@@ -449,23 +435,11 @@ def main():
                 args.load_distill_checkpoint = load_file_name
                 print('args.load_distill_checkpoint:', args.load_distill_checkpoint)
                 args.run_name = get_run_name_from_args(args)
-
-                # load_file_name = f'distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-{name_suffix}_distill.pt'  # hardcoded hack
                 
-                # load_file_name = get_run_name_from_checkpoint(load_file_name)
-                # load_file_name = join(args.checkpoint_dir, f'ft-dl-d={distill_prefix}-m={args.model_config}')
                 args.run_name = join(CHECKPOINT_DIR_405B, 'ft-' + args.run_name)
-                # update_config_from_args(final_finetune_config, args)
                 args.run_name += f'-se={args.seed}-re={args.replicate}-{name_suffix}-se={args.seed}-re={args.replicate}_ft.pt'
                 load_file_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
 
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=0000_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-bs=1-gas=8-nte=2-ms=-1-se=0-re=0-in=000-out=008-se=0-re=0_ft.pt'
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=0000_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=000-out=008-se=0-re=0_ft.pt'
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=0001_out=125_distill1d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125-se=0-re=0_ft.pt
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=00--_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-in=000-out=008-se=0-re=0_ft.pt'
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=00_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-in=000-out=008-se=0-re=0_ft.pt'
-                # /home/simarora/code/lolcats/checkpoints/ft-dl-d=0_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-in=000-out=008-se=0-re=0_ft.pt
-                
                 if (layer_idx + 1) % args.layers_per_model == 0:
                     if rank == 0 or not args.enable_fsdp:
                         print(f'Loading layer loras from {CHECKPOINT_DIR_405B}...')
@@ -474,14 +448,6 @@ def main():
                         _keys = model.load_state_dict(mini_weights, strict=False)
                         check_state_dict_keys(_keys, first)
                     first = layer_idx + 1
-    
-    # Actual final run name / checkpoint naming
-    if args.final_finetune_config is not None:  # Update checkpoint for e2e finetune and lora loading
-        args.run_name += f'-ef={args.final_finetune_config}'
-    args.run_name += f'-ft_lora={args.load_finetuned_loras}'.replace('True', '1').replace('False', '0')
-    if args.no_distill:
-        args.run_name += '-no_distill'
-
     
     hsdp_device_mesh = None
     if fsdp_config.hsdp and fsdp_config.sharding_strategy == ShardingStrategy.HYBRID_SHARD:
@@ -605,6 +571,21 @@ def main():
                 if ('layers.0.' in n and 'base_attn' not in n and 
                     '.0.mlp.' not in n and '.block_sparse_moe' not in n):
                     print(f'-> {n}:\n', p)
+        if rank == 0 or not args.enable_fsdp:
+            with torch.no_grad():
+                state_dict = model.state_dict()
+                keys_to_keep = [key for key in state_dict.keys() if 'lora' in key or 'window_factors' in key or 'feature_map' in key]
+                # keys_to_keep = [key for key in state_dict.keys() if 'lora' in key]
+                new_state_dict = {key: state_dict[key] for key in keys_to_keep}
+                if args.final_finetune_config is not None:  # Update checkpoint for e2e finetune and lora loading
+                    args.final_finetune_config = args.final_finetune_config.replace(f'{dirpath}/', '')
+                    args.run_name += f'-ef={args.final_finetune_config}'
+                args.run_name += f'-ft_lora={args.load_finetuned_loras}'.replace('True', '1').replace('False', '0')
+                if args.no_distill:
+                    args.run_name += '-no_distill'
+                torch.save(new_state_dict, f'ckpt_lora-{args.run_name}.pt')
+                for k, v in new_state_dict.items():
+                    print(k)
 
     if not args.enable_fsdp or rank==0:
         for k,v in results.items():
@@ -612,6 +593,7 @@ def main():
             if not args.no_wandb:
                 wandb_run.summary[f'ft_{k}'] = v
         print('-> Find weights at:', best_checkpoint_path)
+        print('-> Find zipped checkpoint at:', f'ckpt_lora-{args.run_name}.pt')
         
 
 if __name__ == '__main__':
