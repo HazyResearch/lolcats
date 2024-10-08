@@ -1,6 +1,7 @@
 name: llama
 model:
-  pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+  # pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-405B/"
+  pretrained_model_name_or_path: "/data/sim/models/Meta-Llama-3.1-405B"
   cache_dir: null
   return_dict: true
   load_in_8bit: false

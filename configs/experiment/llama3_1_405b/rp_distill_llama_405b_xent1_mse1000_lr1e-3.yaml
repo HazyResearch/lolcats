@@ -14,6 +14,7 @@ dataset:
     chunk_size: 1024  # sequence length for distilling
     seed: 42
     cache_dir: "data/rp"
+    use_c4: false
   pretrained_model_config:
     pretrained_model_name_or_path: "/data/sim/models/Meta-Llama-3.1-405B"
     cache_dir: null
@@ -27,7 +28,7 @@ dataloader:
 
 optimizer:
   optim: adamw_torch # adamw
-  lr: 0.01
+  lr: 0.001
   # max_optimizer_steps: 2500 # grad accum 8 x seq len 1024 x max steps 2500 = ~20M tokens 
   # weight_decay: 0.0
 

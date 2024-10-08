@@ -5,6 +5,8 @@ dataset:
     - redpajama/train.json[50000]
     eval_data:
     - redpajama/train.json # [5000]
+    num_train_samples: 20000  # (8 * 2500) * (1024) = 20M
+    max_train_samples: 40000
     max_eval_num: 1000
     max_length: 32768
     min_length: 1024
@@ -12,9 +14,9 @@ dataset:
     chunk_size: 1024  # sequence length for distilling
     seed: 42
     cache_dir: "data/rp"
+    use_c4: false
   pretrained_model_config:
-    pretrained_model_name_or_path: "/scratch/rahul/models/Meta-Llama-3.1-405B"
-    pretrained_model_name_or_path_backup: "/data_ephemeral/rahul/models/Meta-Llama-3.1-405B"
+    pretrained_model_name_or_path: "/data/sim/models/Meta-Llama-3.1-405B"
     cache_dir: null
   preprocess_config: null
 
