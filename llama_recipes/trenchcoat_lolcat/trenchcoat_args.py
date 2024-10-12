@@ -1,5 +1,9 @@
 
 import argparse
+from src.utils.setup import (
+    init_wandb, seed_everything, flatten_config, get_run_name_from_args,
+    update_config_from_args, update_model_config_from_args,
+)
 
 def get_args():
     """Parse command line arguments"""

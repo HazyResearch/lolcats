@@ -75,7 +75,7 @@ from src.model.load_model import load_and_convert_attns, load_and_convert_finetu
 
 from src.trainer import get_scheduler
 from src.finetune import prepare_finetune_configs  # get_finetuner
-from distill_llama import (
+from llama_recipes.distill_llama import (
     setup_wandb, get_args,  get_run_name_from_checkpoint,
     get_dataloaders, setup_fsdp_config
 )

@@ -3,7 +3,7 @@ This script takes the distributed FSDP files from the fine-tuning stage and asse
 """
 
 import sys
-sys.path.insert("../../lolcats")
+sys.path.append("../../lolcats")
 
 import os
 from os.path import join
