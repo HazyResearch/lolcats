@@ -1,8 +1,29 @@
 
 
-## Running inference and evaluations for large models
+## Evals and inference
 
-We used the following procedure:
+First we give basic code for MMLU evaluations. Then we provide some guidance for VLLM integration. 
+
+### 5-shot MMLU Eval
+
+First get the 5-shot MMLU data. This was directly saved to pickle from the lm-eval-harness.
+```
+cd lolcats/inference/
+unzip mmlu.pkl.zip
+```
+
+We used these scripts, plugging in our `.pt` file of learned linear attention map and LoRA weights:
+```
+sbatch scripts/llama3_1_405b/rp_trenchcoat/405_mmlu_eval.sh
+bash scripts/llama3_1_70b/rp_2048_contig/cria_prepare/eval.sh
+```
+
+These call to the `lolcats/inference/evals/eval_mmlu.py` file, which just loops through mmlu.pkl and uses the last-token model logits to get the predictions.
+
+
+### VLLM Integration 
+
+*Warning* Paged attention can create some issues for these models, this code is lightly tested and sufficient for shorter-context tasks like LM-Eval Harness tasks.
 
 ### 1. Clone VLLM
 Also run VLLM installations.

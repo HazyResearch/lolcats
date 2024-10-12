@@ -1,101 +1,57 @@
+
 # LoLCATS in a Trenchcoat
 
 <p align="center">
 <img src="assets/hedgehog_llamas_big.png" align='center' width=35% height=35%>
 </p>
 
-This readme describes how to obtain scaled up, 70B and 405B parameter, LoLCATS!
+This readme describes how to obtain scaled up, 70B and 405B parameter, linear attention LLMs! Our general approach is to (1) break the Llamas into little blocks (["crias", baby llamas](https://en.wikipedia.org/wiki/Cria)) of layers, (2) replace the softmax-attentions with LoLCATS linear attentions and train the linear layers' feature maps to match the outputs from softmax, (3) put all the little LoLCATS back together with some LoRA adaptation -- hence, LoLCATS in a Trenchcoat.
 
----
 
-### Getting started
+Please see the main branch README for setup and installation instructions. Follow these instructions to install the RedPajama data: [Long LLM Repo](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data)
 
-Please see the main branch README for: 
-- Setup and installation instructions. 
-- Details on how the experimental config files are oriented (yaml structure).
-- Instructions to install optional CUDA kernels.
 
----
+## Overview: Linearizing large language models.
 
-### Overview: Linearizing large language models.
+#### Linearizing Llama 70B
 
-We support linearizing larger LLMs (Llama 3.1 70B, Llama 3.1 405B) using the great [llama-recipes](https://github.com/meta-llama/llama-recipes/tree/main/src/llama_recipes) repository.
+First, we describe how to linearize at 70B parameters, which is a good starting point. We split the two stages of LoLCATs linearizing into two scripts:
 
-See `llama_recipes/README.md` for more details. At a high-level, we borrow the Fully Sharded Data Parallel (FSDP) pipeline, linearize **unquantized** models, and split the two stages of LoLCATs linearizing into two scripts:
-
-1. `distill_llama.py`: where we first train subquadratic attentions to mimic the softmax attentions (saving the learned attention feature map checkpoints)
-2. `distill_llama_finetune.py`: where we swap in the learned attentions and finetune the rest of the model with LoRA (saving the LoRA checkpoints)
+1. `llama-recipes/distill_llama.py`: "attention transfer", where we first train subquadratic attentions to mimic the softmax attentions (saving the learned attention feature map checkpoints)
+2. `llama-recipes/distill_llama_finetune.py`: "LoRA finetuning", where we swap in the learned attentions and finetune the rest of the model with LoRA (saving the LoRA checkpoints)
 
 By passing in the same configurations files and arguments to both scripts, `distill_llama_finetune.py` should automatically load the saved checkpoints and pick up from where `distill_llama.py` left off.
 
-#### Sample Commands
+We perform this distillation on a single 8x80GB GPU node, for reference. It takes <1 day.
 
-**_Script 1: Attention Transfer_**
-
-```bash
-torchrun --nnodes 1 --nproc_per_node 8 \
-llama_recipes/distill_llama.py \
---model_config distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean_llama3_1_70b \
---eval_config eval_alpaca_clean \
---lk_zero_init \
---verbose --replicate 0 --seed 0 \
---enable_fsdp --low_cpu_fsdp
-```
-
-**_Script 2: Low-rank Adaptation_**
-
-```bash
-torchrun --nnodes 1 --nproc_per_node 8 \
-llama_recipes/distill_llama_finetune.py \
---model_config distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean_llama3_1_70b \
---eval_config eval_alpaca_clean \
---lk_zero_init \
---verbose --replicate 0 --seed 0 \
---enable_fsdp --low_cpu_fsdp
-```
-
-#### GPU Memory Training Requirements
-
-See https://huggingface.co/blog/llama31#training-memory-requirements
-
----
-
-### Pre-prepared scripts
-
-In the ```scripts/``` folder, we provide pre-constructed commands for Llama 3.1 70B and Llama 3.1 405B distillation. 
-
-**Llama 70B.** This model generally fits within an 8 $\times$ 80GB single node setup. We provide example scripts for launching the end-to-end LoLCATS procedure for the 70B model at: 
+**Llama 70B.** We provide example scripts for launching the end-to-end LoLCATS procedure for the 70B model at: 
 ```
 bash 
 cd lolcats/
 bash scripts/llama3_1_70b/70b_e2e_xent0_mse1000.sh
 ```
+As a brief overview, we have a distill-stage config and finetune-stage config to specify the optimizer scheduler and data, and a model config to specify the architecture, in these commands.
 
-**Llama 405B.** We provide two strategies for distilling Llama 405B. 
+#### Linearizing Llama 405B
 
-The first approach uses the default LoLCATS and uses multi-node training to fit the model in memory. Here, each stage (attention transfer, LoRA finetuning) gets performed all at once. The second appraoch performs the attention transfer to the model *using smaller chunks* of the overall $126$ Transformer-layer Llama model. 
+For 405B, we use the trenchcoats block-by-block approach specified above. Sample scripts and details for the block-by-block approach (approach 2) are at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/trenchcoat)
 
-A sample end-to-end script (approach 1) is:
+*Warning*: To use the cria-by-cria distillation approach: we need to set "self.register_buffer("inv_freq", inv_freq, persistent=True) in the [Transformers modeling_llama.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py) file, when you install.
+
+```
+inv_freq, self.attention_scaling = self.rope_init_fn(self.config, device, **self.rope_kwargs)
+self.register_buffer("inv_freq", inv_freq, persistent=True) # LoLCATS Flag 
+self.original_inv_freq = self.inv_freq
+```
+
+Baseline to our approach: As a reference-point for the value of the block-by-block, we also provide a script to train a baseline that does attention-transfer without block by block and then LoRA.
 ```
 bash 
 cd lolcats/
 bash scripts/llama3_1_405b/405b_e2e_xent1_mse1000.sh
 ```
 
-Sample scripts and details for the chunk-level approach (approach 2) are at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/trenchcoat)
-
----
-
-### Running evaluations and inference.
+## Running evaluations and inference
 
 We describe how we ran evaluations for the large models in [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/inference).
 
----
-
-Notes: 
-- To install the RedPajama data: [https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data]
-- To use the cria-by-cria distillation approach: we need to set "self.register_buffer("inv_freq", inv_freq, persistent=True) # SA flag" in modeling_llama.py source code.
