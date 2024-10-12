@@ -5,8 +5,6 @@ Train learnable linear attentions. Rough adaptation of llama_recipes script for 
 """
 import os
 from os.path import join
-# import sys
-# sys.path.append('/workspace/lolcats')  # needed for vast-ai instances
 import dataclasses
 import random
 import argparse  # ours
