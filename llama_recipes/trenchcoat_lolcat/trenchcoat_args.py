@@ -64,18 +64,16 @@ def get_args():
     parser.add_argument("--eval_steps", type=int, default=None)
     parser.add_argument("--max_eval_batches", type=int, default=None)
 
-    # Block by block 
-    parser.add_argument("--shard_dir", type=str, default=f"/data/simran/")
     # Block by block attention transfer 
-    parser.add_argument("--shard_dir", type=str, default="/data/simran/sharded_layers_405b_interval5/")
-    parser.add_argument("--attentions_data_dir", type=str, default="/data/simran/_data_rahul_models_Meta-Llama-3.1-70B_-interval5/")
-    parser.add_argument("--checkpoint_model_config", type=str, default='llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01')
-
-    # CHECKPOINT_DIR = f"/data/simran/sharded_layers_70b_interval5/" 
-    # CHECKPOINT_DIR = f"/data/simran/sharded_layers_405b_interval5/" # SA Flag
-    # DATA_DIR = "/data/simran/_data_rahul_models_Meta-Llama-3.1-70B_-interval5/"
-
-    CHECKPOINT_DIR_405B = "/home/rahul/code/clean/lolcats/checkpoints" 
+    parser.add_argument(
+        "--shard_dir", type=str, 
+        default="/data/simran/sharded_layers_405b_interval5/")
+    parser.add_argument(
+        "--attentions_data_dir", type=str, 
+        default="/data/simran/_data_rahul_models_Meta-Llama-3.1-70B_-interval5/")
+    parser.add_argument(
+        "--checkpoint_model_config", type=str, 
+        default='llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01')
 
     # Miscellaneous
     parser.add_argument("--huggingface_token", type=str, default=None)

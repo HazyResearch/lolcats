@@ -93,7 +93,7 @@ def main():
     # 1. SET UP
     # ---------
     args = get_args()
-    DATA_DIR = args.data_dir
+    DATA_DIR = args.attentions_data_dir
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
