@@ -6,8 +6,6 @@ Finetune attention-swapped model. Rough adaptation of llama_recipes script for d
 """
 import os
 from os.path import join
-# import sys
-# sys.path.append('/workspace/lolcats')  # needed for vast-ai instances
 import dataclasses
 import random
 import argparse  # ours
@@ -25,16 +23,10 @@ from torch.distributed.fsdp import (
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
 
 from llama_recipes.configs import fsdp_config as FSDP_CONFIG
-# from llama_recipes.configs import train_config as TRAIN_CONFIG
 from llama_recipes.policies import AnyPrecisionAdamW, apply_fsdp_checkpointing
 
 from llama_recipes.utils.fsdp_utils import fsdp_auto_wrap_policy
-from llama_recipes.utils.config_utils import (
-    update_config,
-    # generate_peft_config,
-    # generate_dataset_config,
-    # get_dataloader_kwargs,
-)
+from llama_recipes.utils.config_utils import (update_config)
 from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
 )
@@ -50,7 +42,6 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_model_sharded,
     load_sharded_model_single_gpu,
 )
-# from llama_recipes.trainer_finetune_chunked import train as train_chunked
 
 from accelerate.utils import is_xpu_available
 
@@ -64,7 +55,6 @@ from src.utils.setup import (
     update_model_config_from_args
 )
 from src.utils.logging import print_header, print_config
-# from src.dataloaders import load_data
 from src.trainer import get_scheduler
 
 from src.finetune import prepare_finetune_configs  # get_finetuner
@@ -107,11 +97,6 @@ def main():
         os.makedirs(args.checkpoint_dir)
 
     kwargs = vars(args)
-
-    # if 'finetune_long' in args.finetune_config:
-    #     train = train_chunked
-    # else:
-    #     train = _train_normal
     train = _train_normal
 
     # Load distillation + attention configs
@@ -181,16 +166,6 @@ def main():
 
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
-
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     model_loader = get_pretrained_loader(**model_config.model, 
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()

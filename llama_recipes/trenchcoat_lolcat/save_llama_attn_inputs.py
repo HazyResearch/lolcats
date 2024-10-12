@@ -1,10 +1,9 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
-
 """
 Finetune attention-swapped model. Rough adaptation of llama_recipes script for distillation.
 
-Example usage (using the same args as distill_llama.py for convenience (just swap the file called)
+Example usage (using the same args as distill_llama.py for convenience (just swap the file called))
 ```
 torchrun --nnodes 1 --nproc_per_node 8 \
 llama_recipes/save_llama_attn_inputs.py \
@@ -14,23 +13,13 @@ llama_recipes/save_llama_attn_inputs.py \
 --verbose --replicate 0 --seed 0 \
 --enable_fsdp --low_cpu_fsdp 
 ```
-
-"Another one"
-```
-torchrun --nnodes 1 --nproc_per_node 1 \
-llama_recipes/save_llama_attn_inputs.py \
---model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
---finetune_config finetune_lora_qkvo_alpaca_clean \
---verbose --replicate 0 --seed 0 \
---enable_fsdp --low_cpu_fsdp 
-```
 """
+
 import os
 from os.path import join
 import dataclasses
 import random
-import argparse  # ours
+import argparse  
 from pkg_resources import packaging
 
 import torch
@@ -98,14 +87,13 @@ from tqdm import tqdm
 
 CUTOFF_BATCH = 20   # Save to disk and delete tensors every CUTOFF_BATCH
                      # to save CPU memory
-DATA_DIR = "/data_ephemeral/sim/"   # mk-xii
-DATA_DIR = "/data/simran/"  # mk-turbo
 
 def main():
     # ---------
     # 1. SET UP
     # ---------
     args = get_args()
+    DATA_DIR = args.data_dir
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
@@ -138,11 +126,10 @@ def main():
         data_dir = join(cache_dir, dataset_name) 
         if not os.path.isdir(data_dir):
             os.makedirs(data_dir)
-        data_dir = join(data_dir, model_name)  # meta-llama_Meta-Llama-3.1-70B/attn_inputs-l=31-split=train.pt
+        data_dir = join(data_dir, model_name)  
         if not os.path.isdir(data_dir):
             os.makedirs(data_dir)
         print(f'-> Saving layer-wise tensors to {data_dir}')
-    # dist.barrier()
 
     # Copied from distill_llama.py and distill_llama_finetune.py for FSPD
     if args.enable_fsdp:
@@ -310,8 +297,6 @@ def main():
     print(f"-> Saving layer-wise tensors to {save_dir}")
     print(f"-> Length of sequences = {seqlen}")
     for split, dataloader in {'train': train_dataloader, 'validation': eval_dataloader}.items():
-
-        if split == 'validation': continue  # Skip validation for now (RP Contig)
         
         if rank == 0 or not args.enable_fsdp:
             print_header(f'*** Computing layer-wise {split} outputs ***')
@@ -337,6 +322,7 @@ def main():
                         batch[key] = batch[key].to('xpu:0')
                     else:
                         batch[key] = batch[key].to('cuda:0')
+                
                 # Save tensors -> HuggingFace Llama API
                 outputs = model(**batch, output_hidden_states=True, use_cache=False).get('hidden_states')
                 for idx, hidden_state in enumerate(outputs[:-1]):  # indexed by layer, last layer is hidden layer before lm_head

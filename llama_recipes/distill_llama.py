@@ -158,6 +158,9 @@ def get_args():
     parser.add_argument("--debug", action='store_true', default=None)
     parser.add_argument("--num_train_steps", type=int, default=-1)
 
+    # For saving the block-by-block hidden states 
+    parser.add_argument("--data_dir", type=str, default="/data/simran/")
+
     # DEMO
     ## Generation
     parser.add_argument("--num_generations", type=int, default=1)
@@ -179,10 +182,7 @@ def get_args():
         args.run_name += f'-npgc={args.no_peft_grad_ckpt}'
     if args.fsdp_activation_checkpointing is not None:
         args.run_name += f'-fac={args.fsdp_activation_checkpointing}'
-    # if args.dataset_chunk_size is not None:
-    #     args.run_name += f'-dcs={args.dataset_chunk_size}'
-    # args.run_name += f'-s={args.seed}'
-    
+
     if args.debug:
         args.run_name += '-debug'
     
@@ -232,10 +232,9 @@ def get_dataloaders(train_config, tokenizer, no_shuffle_train: bool = False):
     train_config.batch_size_training = train_config.dataloader.batch_size
     train_config.val_batch_size = train_config.dataloader.batch_size
     
-    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer,   # shuffle=mode=="train",
-                                            "train_no_shuffle" if no_shuffle_train else "train")  # hacky patch
+    train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer,  
+                                            "train_no_shuffle" if no_shuffle_train else "train") 
     val_dl_kwargs = get_dataloader_kwargs(train_config, dataset_eval, tokenizer, "val")
-    # val_dl_kwargs['collate_fn'] = eval_loader.collate_fn
 
     # Create DataLoaders for the training and validation dataset
     train_loader = torch.utils.data.DataLoader(
@@ -301,11 +300,6 @@ def main():
         os.makedirs(args.checkpoint_dir)
 
     kwargs = vars(args)
-
-    # if 'distill_long' in args.distill_config:
-    #     train = train_chunked
-    # else:
-    #     train = _train_normal
     train = _train_normal
 
     # Load distillation + attention configs
@@ -371,19 +365,8 @@ def main():
     # ------------------------
     # 2. LOAD PRETRAINED MODEL
     # ------------------------
-
     # Load the pre-trained model and setup its configuration
     # Initialize tokenizer and model loader
-
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     model_loader = get_pretrained_loader(**model_config.model,
                                          huggingface_token=args.huggingface_token)
     tokenizer = model_loader.load_tokenizer()
@@ -538,12 +521,6 @@ def main():
             lr=distill_config.optimizer.lr,
             weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
         )
-        # optimizer = optim.SGD(
-        #     model.parameters(),
-        #     lr=distill_config.optimizer.lr,
-        #     weight_decay=getattr(distill_config.optimizer, 'weight_decay', 0.),
-        # )
-    # ex.) scheduler = StepLR(optimizer, step_size=1, gamma=train_config.gamma)
     scheduler = get_scheduler(optimizer=optimizer, **distill_config.lr_scheduler)
 
     for n, p in model.named_parameters():
@@ -594,11 +571,6 @@ def main():
         wandb_run,
         eval_mode = args.replicate == 42,
     )
-    # if not args.enable_fsdp or rank==0:
-    #     [print(f'Key: {k}, Value: {v}') for k, v in results.items()]
-    #     if not args.no_wandb:
-    #         for k,v in results.items():
-    #             wandb_run.summary[k] = v
 
     if not args.enable_fsdp or rank==0:
         print(model)
@@ -609,7 +581,6 @@ def main():
     elif fsdp_config.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
         # Load sharded weights across GPUs into model
         load_model_sharded(model, rank, distill_config)  # Test loading the sharded weights
-        # save_model_checkpoint(model, None, rank, distill_config, epoch=distill_config.num_epochs)
         if rank == 0:  # debugging
             print_header('** Sanity check model weights **')
             for n, p in model.named_parameters():

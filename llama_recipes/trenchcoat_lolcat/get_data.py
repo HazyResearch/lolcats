@@ -22,12 +22,17 @@ class AttentionInputDataset(Dataset):
         return {'inputs_embeds': x, 'position_ids': position_ids}
 
 
-# Data loader that we used for alpaca
+###################################################################
+#  Use this if your data has explicit train/validation splits.
+###################################################################
 def load_data_alpaca(data_dir: str, layer_idx: int, max_layer: int = 32, 
               **loader_kwargs: any):
     """
     Specific function to load attention input dataloaders
     """
+
+    train_batches_num = 1400
+
     max_layer_digits = len(str(max_layer))
 
     dataloaders = {'train': None, 'validation': None}
@@ -36,7 +41,7 @@ def load_data_alpaca(data_dir: str, layer_idx: int, max_layer: int = 32,
         
         for i, f in enumerate(tqdm(os.listdir(data_dir))):
             bs = int(f.split('-b=')[1].split('.')[0])
-            if bs > 1400: 
+            if bs > train_batches_num: 
                 _act_split = "validation"
             else:
                 _act_split = "train"
@@ -54,26 +59,40 @@ def load_data_alpaca(data_dir: str, layer_idx: int, max_layer: int = 32,
     return dataloaders
 
 
-# red pajama
-def load_data_redpajama(data_dir: str, layer_idx: int, max_layer: int = 32, 
-              **loader_kwargs: any):
+###################################################################
+#  Use these if your data has only train, and you need to split it.
+###################################################################
+def load_data_redpajama(
+    data_dir: str, 
+    layer_idx: int, 
+    max_layer: int = 32, 
+    **loader_kwargs: any
+):
     """
     Specific function to load attention input dataloaders
     """
     max_layer_digits = len(str(max_layer))
 
+    ####################################
+    # SA 10/11/24: Set the number of batches to use for training and validation
+    # these batches are obtained from the save_llama_attn_inputs.py script.
+    # Note that we're just loading into CPU memory, so if you make this too 
+    # large, you might run out of CPU memory.
+    # #################################### 
+    
+    end_train = 2400
+    end_val = end_train + 40
+
     dataloaders = {'train': None, 'validation': None}
     train_sample_tensors = []
     val_sample_tensors = []
-    for i, f in enumerate(tqdm(os.listdir(data_dir))):
+    all_files = os.listdir(data_dir)
+    print(f"Got {len(all_files)} files")
+    for i, f in enumerate(tqdm(all_files)):
         bs = int(f.split('-b=')[1].split('.')[0])
 
         # Filter and load naïvely 
         if f'-l={layer_idx:0{max_layer_digits}d}-s=train' in f:
-            
-            # for our crias
-            end_train = 750
-            end_val = end_train + 50
 
             if bs > end_train and bs < end_val: 
                 try:
@@ -98,56 +117,17 @@ def load_data_redpajama(data_dir: str, layer_idx: int, max_layer: int = 32,
 
     # save train
     train_samples = torch.cat(train_sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+    print(f"{train_samples.shape=}")
     _dataset = AttentionInputDataset(train_samples)
     _dataloader = DataLoader(_dataset, shuffle=True, **loader_kwargs)
     dataloaders['train'] = _dataloader
 
     # save validation 
     val_samples = torch.cat(val_sample_tensors, dim=0)  # attn_inputs.shape is (batch, seq_len, hidden_size)
+    print(f"{val_samples.shape=}")
     _dataset = AttentionInputDataset(val_samples)
     _dataloader = DataLoader(_dataset, shuffle=False, **loader_kwargs)
     dataloaders['validation'] = _dataloader
     print(f"Got dataloaders!")
     return dataloaders
-
-
-def load_data_redpajama_contig(data_dir: str, layer_idx: int, max_layer: int = 32, 
-              **loader_kwargs: any):
-    """
-    Specific function to load attention input dataloaders
-    """
-    max_layer_digits = len(str(max_layer))
-
-    samples = []
-    for i, f in enumerate(tqdm(os.listdir(data_dir))):
-        bs = int(f.split('-b=')[1].split('.')[0])
-
-        # Filter and load naïvely 
-        if f'-l={layer_idx:0{max_layer_digits}d}-s=train' in f:
-            data = torch.load(join(data_dir, f))
-            samples.append(data)
-            print(f"Adding to train: {f=}")
-        # if i > 10: break
-
-    print(f"{len(samples)=}")
-
-    # partition 
-    num_train = int(len(samples) * 0.96)
-    train_sample_tensors = samples[:num_train]
-    val_sample_tensors = samples[num_train:]
-
-    # save train
-    train_samples = torch.cat(train_sample_tensors, dim=0)  
-    train_dataset = AttentionInputDataset(train_samples)
-    train_dataloader = DataLoader(train_dataset, shuffle=True, **loader_kwargs)
-
-    # save validation 
-    val_samples = torch.cat(val_sample_tensors, dim=0)  
-    val_dataset = AttentionInputDataset(val_samples)
-    val_dataloader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
-
-    dataloaders = {'train': train_dataloader, 'validation': val_dataloader}
-    return dataloaders
-
-
 

@@ -50,184 +50,7 @@ from llama_recipes.utils.fsdp_utils import (
 )
 from src.model.convert_model import toggle_attention, remove_base_attention, traverse_layers
 
-
-CHECKPOINT_DIR = f"/data/simran/"
-
-def get_args():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='lolcats')
-    parser.add_argument("--layers_per_model", type=int)
-    parser.add_argument("--layer_idx", type=int)  # specify starting layer
-    parser.add_argument("--device", type=int, default=0)
-
-    parser.add_argument("--model_config", type=str, default=None)
-    parser.add_argument("--distill_config", type=str, default=None)
-    parser.add_argument("--finetune_config", type=str, default=None)
-    parser.add_argument("--eval_config", type=str, default=None)
-
-    parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
-    parser.add_argument("--load_distill_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_distill", action='store_true', default=None)
-    
-    parser.add_argument("--load_finetune_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_finetune", action='store_true', default=None)
-
-    # Override default configs
-    # Feature map / model
-    parser.add_argument("--attention_type", type=str, default=None)
-    parser.add_argument("--learned_kernel", type=str, default=None)  # always
-    parser.add_argument("--lk_skip_connection", action='store_true', default=None)
-    parser.add_argument("--lk_zero_init", action='store_true', default=None)
-    parser.add_argument("--lk_normal_init", action='store_true', default=None)
-    parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
-    parser.add_argument("--train_qk", action='store_true', default=None)
-    parser.add_argument("--state_chunk_len", type=int, default=None)
-    
-    # Training
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--weight_decay", type=float, default=None)
-    parser.add_argument("--optim", type=str, default=None)
-    parser.add_argument("--scheduler", type=str, default=None)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=None)
-    parser.add_argument("--num_train_epochs", type=int, default=None)
-    parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--max_finetune_steps", type=int, default=None)
-
-    parser.add_argument("--no_peft_grad_ckpt", action='store_true', default=None)
-    
-    ## Distributed training / Llama recipes
-    parser.add_argument("--enable_fsdp", action='store_true', default=None)
-    parser.add_argument("--low_cpu_fsdp", action='store_true', default=None)
-    parser.add_argument("--pure_bf16", action='store_true', default=None)
-    parser.add_argument("--fsdp_activation_checkpointing", action='store_true', default=None)
-    parser.add_argument("--fsdp_cpu_offload", action='store_true', default=None)
-    
-    # Dataloading
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--num_workers", type=int, default=None)
-
-    # Evaluation
-    parser.add_argument("--no_init_eval", action='store_true', default=False)
-    parser.add_argument("--eval_steps", type=int, default=None)
-    parser.add_argument("--max_eval_batches", type=int, default=None)
-
-    # Miscellaneous
-    parser.add_argument("--huggingface_token", type=str, default=None)
-    parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints')
-    parser.add_argument("--results_dir", type=str, default='./results')
-    parser.add_argument("--replicate", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--verbose", action='store_true', default=None)
-    parser.add_argument("--no_cuda", action='store_true', default=None)
-    parser.add_argument("--no_wandb", action='store_true', default=None)
-    parser.add_argument("--wandb_entity", type=str, default='hazy-research')
-    parser.add_argument("--debug", action='store_true', default=None)
-    parser.add_argument("--no_attention_mask", action='store_true', default=None)
-
-    args = parser.parse_args()
-    args.run_name = get_run_name_from_args(args)
-    return args
-
-
-# -----------
-# Mini Llamas
-# -----------
-class LlamaMiniDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, layer_idx: int, 
-                 apply_input_layernorm: bool = True):
-        super().__init__()
-
-        self.layer_idx = layer_idx
-        self.hidden_size = config.hidden_size
-        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.apply_input_layernorm = apply_input_layernorm  # Hack, but patch for saving attention inputs
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
-        # apply_input_layernorm: Optional[bool] = True,  # Ours
-        **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        
-        residual = hidden_states
-
-        if self.apply_input_layernorm:  # Ours
-            hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
-            position_embeddings=position_embeddings,
-            **kwargs,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
-
-
-class LlamaMiniModel(LlamaModel):
-    def __init__(self, config: LlamaConfig):
-        super().__init__(config)
-        self.padding_idx = config.pad_token_id
-        self.vocab_size = config.vocab_size
-
-        self.embed_tokens = nn.Identity() #nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([
-            LlamaMiniDecoderLayer(config, layer_idx, apply_input_layernorm=layer_idx > 0) 
-            for layer_idx in range(config.num_hidden_layers)
-        ])
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = LlamaRotaryEmbedding(config=config)
-        self.gradient_checkpointing = False
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-
-class LlamaMiniModelForCausalLM(LlamaForCausalLM):
-    """
-    Pass in `inputs_embeds` for model.forward()
-    """
-    def __init__(self, config):
-        super().__init__(config)
-        self.model = LlamaMiniModel(config)
-        self.vocab_size = config.vocab_size
-        self.lm_head = nn.Identity() #nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
+from trenchcoat_llama import LlamaMiniModelForCausalLM, LlamaMiniDecoderLayer, LlamaMiniModel
 
 def main():
     # ------
@@ -237,9 +60,7 @@ def main():
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = int(os.environ["RANK"])
-
     kwargs = vars(args)
-
     args.results_dir = join(args.results_dir, args.model_config)
     if not os.path.isdir(args.results_dir):
         os.makedirs(args.results_dir)
@@ -262,7 +83,6 @@ def main():
 
     if args.enable_fsdp:
         setup()
-        # torchrun specific
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = int(os.environ["RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
@@ -291,32 +111,15 @@ def main():
 
 
     # Where to save the output model checkpoints?
+    checkpoint_dir = args.shard_dir
     model_name = model_config.model.pretrained_model_name_or_path
-    if "405" in model_name:
-        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_405b_interval{args.layers_per_model}"
-    elif "70" in model_name:
-        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_70b_interval{args.layers_per_model}"
-    elif "8" in model_name:
-        checkpoint_dir = f"{CHECKPOINT_DIR}/sharded_layers_8b_interval{args.layers_per_model}"
-    else:
-        raise ValueError(f"Model name {model_name} not recognized.")
     checkpoint_dir = join(checkpoint_dir, args.model_config)
     if not os.path.isdir(checkpoint_dir) and ((args.enable_fsdp and rank == 0 and local_rank == 0) or not args.enable_fsdp):
         os.makedirs(checkpoint_dir)
-
         # Save individual .pt model weights in a subdirectory
         checkpoint_dir = join(checkpoint_dir, 'sharded_layers')
         if not os.path.isdir(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
 
     if rank == 0 or not args.enable_fsdp:
         print_header('Model Config')
@@ -384,40 +187,27 @@ def main():
         print(model_config) 
         print(mini_config)
     
-
-    # with torch.no_grad():
+    # SA: important for fitting the model at large block/cria sizes
     with torch.device('meta'):
         mini_llama = LlamaMiniModelForCausalLM(mini_config).to(torch.bfloat16)
     mini_llama = mini_llama.to_empty(device='cpu')
     if rank == 0:
         print(mini_llama)
         print(f"Initialized mini llama.")
-        print(model)
-        print(model.state_dict().keys())
-        # print(f"Done with the keys\n\n")
     
     mini_init = {}
     for i in range(args.layers_per_model): mini_init[i] = False
     with torch.no_grad():
         first = 0
         for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
-            if layer_idx < 40: 
-                first = layer_idx + 1
-                continue 
-            if layer_idx > 50: 
-                first = layer_idx + 1
-                continue
             print(f'Saving layer attentions to {checkpoint_dir}...')
-            
             pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
-            pretrained_fname = pretrained_fname.replace("_data_ephemeral_rahul_models_Meta-Llama-3.1-405B", "_scratch_rahul_models_Meta-Llama-3.1-405B")
             print(pretrained_fname)
             if layer_idx == 0 and rank == 0: 
                 print(layer.state_dict().keys())
             
             mini_init[layer_idx % args.layers_per_model] = True
-            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict()) # SA
-            # breakpoint()
+            mini_llama.model.layers[layer_idx % args.layers_per_model].load_state_dict(layer.state_dict())
 
             if (layer_idx + 1) % args.layers_per_model == 0: 
                 if rank == 0: 
@@ -430,7 +220,6 @@ def main():
 
                 if rank == 0 or not args.enable_fsdp:
                     print(f"Initialized?\n{mini_init=}")
-                    # breakpoint()
                     torch.save(mini_llama.state_dict(), pretrained_fname)
                     print(f"Saved to: {pretrained_fname}!")
 
@@ -459,3 +248,4 @@ def main():
 if __name__ == '__main__':
     main()
     print("Thanks for washing my dishes")
+    

@@ -1,77 +1,9 @@
 """ 
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
---final_finetune_config llama3_1_405b/finetune_llama_405b_qkvo \
---verbose --replicate 0 --seed 0 \
---layers_per_model 9 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---load_finetune_checkpoint /home/mzhang/projects/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/sharded_layers/finetune-dl-d=llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-se=0-re=0
-
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_405b/no_distill_alpaca_clean \
---finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
---final_finetune_config llama3_1_405b/no_distill_finetune_405b \
---verbose --replicate 0 --seed 0 \
---layers_per_model 9 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---no_distill \
---load_finetune_checkpoint /home/simarora/code/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/finetune-dl-d=llama3_1_405b/no_distill_llama3_1_405b-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/no_distill_finetune_405b-fac=1-dcs=1024-se=0-re=0-lzi=1-dcs=1024-se=0-re=0
-
-
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h117 \
---distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
---final_finetune_config llama3_1_405b/finetune_llama_405b_qkvo \
---verbose --replicate 0 --seed 0 \
---layers_per_model 9 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---load_finetune_checkpoint /home/mzhang/projects/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h117/sharded_layers/finetune-dl-d=llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h117-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-se=0-re=0
-
-
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
---final_finetune_config llama3_1_405b/finetune_llama_405b_qkvo_e2 \
---verbose --replicate 0 --seed 0 \
---layers_per_model 9 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---load_finetune_checkpoint /home/mzhang/projects/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/sharded_layers/finetune-dl-d=llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-ef=llama3_1_405b/finetune_llama_405b_qkvo_e2-ft_lora=0-se=0-re=0
-
-
-Hybrid redpajama
-
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h72_80_117_125 \
---distill_config llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/finetune_layer_mini_xent1_mse1000 \
---final_finetune_config llama3_1_405b/finetune_llama_405b_qv_e2_rp_h72_80_117_125 \
---verbose --replicate 0 --seed 0 \
---layers_per_model 9 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---load_finetune_checkpoint /home/mzhang/projects/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h72_80_117_125/sharded_layers/finetune-dl-d=llama3_1_405b/distill_llama_405b_xent1_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01_h72_80_117_125-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-se=0-re=0
-
-
-torchrun --nnodes 1 --nproc_per_node 8 llama_recipes/save_fsdp_to_pt_405b.py \
---model_config llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_405b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2 \
---finetune_config llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams_2048 \
---final_finetune_config llama3_1_405b/finetune_llama_405b_qkvo_e2_rp_2048 \
---verbose --replicate 0 --seed 0 \
---layers_per_model 3 --layer_idx 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
---load_finetune_checkpoint /home/rahul/code/clean/lolcats/checkpoints/llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01/sharded_layers/finetune-dl-d=llama3_1_405b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/rp_contig_finetune_llama_405b_qv_hparams_2048-s=0-se=0-re=0-se=0-re=0
-
-
-
+This script takes the distributed FSDP files from the fine-tuning stage and assembles a single .pt file, so that we can plug that into our evaluation code.
 """
 
 import sys
-sys.path.insert(0,'/home/rahul/code/clean/lolcats')
+sys.path.insert("../../lolcats")
 
 import os
 from os.path import join
@@ -101,7 +33,6 @@ from llama_recipes.configs import fsdp_config as FSDP_CONFIG
 from llama_recipes.policies import apply_fsdp_checkpointing
 from llama_recipes.utils.fsdp_utils import fsdp_auto_wrap_policy
 from accelerate.utils import is_xpu_available
-# from distill_llama import setup_fsdp_config
 from llama_recipes.utils.fsdp_utils import (
     hsdp_device_mesh as get_hsdp_device_mesh
 )
@@ -136,88 +67,7 @@ from llama_recipes.distill_llama import (
     get_dataloaders, setup_fsdp_config
 )
 
-
-def get_args():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='lolcats')
-    parser.add_argument("--layers_per_model", type=int)
-    parser.add_argument("--layer_idx", type=int)  # specify starting layer
-    parser.add_argument("--device", type=int, default=0)
-
-    parser.add_argument("--load_finetuned_loras", action='store_true', default=False)
-    parser.add_argument("--no_distill", action='store_true', default=False)
-
-    parser.add_argument("--model_config", type=str, default=None)
-    parser.add_argument("--distill_config", type=str, default=None)
-    parser.add_argument("--finetune_config", type=str, default=None)
-    parser.add_argument("--eval_config", type=str, default=None)
-
-    parser.add_argument("--final_finetune_config", type=str, default=None)
-
-    parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
-    parser.add_argument("--load_distill_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_distill", action='store_true', default=None)
-    
-    parser.add_argument("--load_finetune_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_finetune", action='store_true', default=None)
-
-    # Override default configs
-    # Feature map / model
-    parser.add_argument("--attention_type", type=str, default=None)
-    parser.add_argument("--learned_kernel", type=str, default=None)  # always
-    parser.add_argument("--lk_skip_connection", action='store_true', default=None)
-    parser.add_argument("--lk_zero_init", action='store_true', default=None)
-    parser.add_argument("--lk_normal_init", action='store_true', default=None)
-    parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
-    parser.add_argument("--train_qk", action='store_true', default=None)
-    parser.add_argument("--state_chunk_len", type=int, default=None)
-    
-    # Training
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--weight_decay", type=float, default=None)
-    parser.add_argument("--optim", type=str, default=None)
-    parser.add_argument("--scheduler", type=str, default=None)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=None)
-    parser.add_argument("--num_train_epochs", type=int, default=None)
-    parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--max_finetune_steps", type=int, default=None)
-
-    parser.add_argument("--no_peft_grad_ckpt", action='store_true', default=None)
-    
-    ## Distributed training / Llama recipes
-    parser.add_argument("--enable_fsdp", action='store_true', default=None)
-    parser.add_argument("--low_cpu_fsdp", action='store_true', default=None)
-    parser.add_argument("--pure_bf16", action='store_true', default=None)
-    parser.add_argument("--fsdp_activation_checkpointing", action='store_true', default=None)
-    parser.add_argument("--fsdp_cpu_offload", action='store_true', default=None)
-    
-    # Dataloading
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--num_workers", type=int, default=None)
-
-    # Evaluation
-    parser.add_argument("--no_init_eval", action='store_true', default=False)
-    parser.add_argument("--eval_steps", type=int, default=None)
-    parser.add_argument("--max_eval_batches", type=int, default=None)
-
-    # Miscellaneous
-    parser.add_argument("--huggingface_token", type=str, default=None)
-    parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints')  # changed
-    parser.add_argument("--results_dir", type=str, default='./results')
-    parser.add_argument("--replicate", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--verbose", action='store_true', default=None)
-    parser.add_argument("--no_cuda", action='store_true', default=None)
-    parser.add_argument("--no_wandb", action='store_true', default=None)
-    parser.add_argument("--wandb_entity", type=str, default='hazy-research')
-    parser.add_argument("--debug", action='store_true', default=None)
-    parser.add_argument("--no_attention_mask", action='store_true', default=None)
-
-    args = parser.parse_args()
-    args.run_name = get_run_name_from_args(args)
-    return args
-
+from trenchcoat_args import get_args
 
 def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune', output_dir: str = None):
     """
@@ -227,7 +77,7 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune', output_di
     config.seed = args.seed
     config.enable_fsdp = args.enable_fsdp
     config.low_cpu_fsdp = args.low_cpu_fsdp
-    config.dist_checkpoint_root_folder = args.checkpoint_dir  # '/home/mzhang/projects/lolcats/checkpoints/'
+    config.dist_checkpoint_root_folder = args.checkpoint_dir  
     config.dist_checkpoint_folder = checkpoint_name
 
     config.model_name = args.run_name
@@ -258,8 +108,11 @@ def main():
     # SET UP
     # ------
     args = get_args()
-    CHECKPOINT_DIR_405B = "/home/rahul/code/clean/lolcats/checkpoints"  #  "/data_ephemeral/sim/sharded_layers_405b/"
-    CHECKPOINT_MODEL_CONFIG = 'llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01'
+
+    CHECKPOINT_DIR_405B =  args.checkpoint_dir
+    CHECKPOINT_MODEL_CONFIG = args.checkpoint_model_config
+    # CHECKPOINT_MODEL_CONFIG = 'llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01'
+    CHECKPOINT_MODEL_CONFIG = 'llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01'
 
     if args.enable_fsdp:
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -285,12 +138,6 @@ def main():
     distill_config = OmegaConf.load(distill_config_path)
     distill_config = update_config_from_args(distill_config, args)
     distill_config = setup_fsdp_config(distill_config, args, 'distill')  # patch 
-
-    # for arg, argv in distill_config.trainer.items():  # legacy, should be removed
-    #     if arg != 'name':
-    #         setattr(args, arg, argv)
-    #     for _config in ['dataloader', 'optimizer', 'lr_scheduler']:
-    #         setattr(args, _config, OmegaConf.to_container(getattr(distill_config, _config)))
 
     fsdp_config = FSDP_CONFIG()
     if is_xpu_available():
@@ -343,15 +190,6 @@ def main():
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
     model_config.model.low_cpu_mem_usage = True
 
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-
     if rank == 0 or not args.enable_fsdp:
         print_header('Model Config')
         print_config(model_config)
@@ -366,8 +204,6 @@ def main():
     num_hidden_layers = pretrained_model_config.num_hidden_layers  # e.g., 32 for Llama 8B
     max_digits = len(str(num_hidden_layers))
     start, end = args.layer_idx, args.layer_idx + args.layers_per_model - 1
-    # name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-    # args.run_name += f'-{name_suffix}'  # will save layer-wise checkpoints
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
     if rank == 0 or not args.enable_fsdp:
         print(f"Running distill for {num_hidden_layers}; Layers {start} through {end}!")
@@ -440,15 +276,6 @@ def main():
         with torch.no_grad():
             first = 0
             for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
-                # file name
-                # load_file_name = f'{join(CHECKPOINT_DIR_405B, args.run_name)}'
-                # max_digits = len(str(num_hidden_layers))
-                # start, end = first, first + (args.layers_per_model - 1)
-                # name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-                # load_file_name += f'-{name_suffix}' 
-                # load_file_name = load_file_name.replace('True', '1').replace('False', '0')  # concise hacks
-                # load_file_name = load_file_name +  f'_distill.pt'
-
                 load_file_name = join(CHECKPOINT_DIR_405B, f'dl-d={args.distill_config}-m={CHECKPOINT_MODEL_CONFIG}-f={args.finetune_config}')
                 load_file_name += f'-s={args.seed}-se={args.seed}-re={args.replicate}'
                 max_digits = len(str(num_hidden_layers))
@@ -465,19 +292,14 @@ def main():
                         _keys = model.load_state_dict(mini_weights, strict=False)
                         check_state_dict_keys(_keys, first)
                     first = layer_idx + 1
-            # args.run_name += f'-{name_suffix}'  # dealing with legacy naming
-
     
     # Step 4. Add finetuning parameters. 
     final_finetune_config, args = prepare_finetune_configs(args, model_config, 
                                                            args.final_finetune_config)
     final_finetune_config = setup_fsdp_config(final_finetune_config, args, 'finetune',
-                                              output_dir='/home/mzhang/projects/lolcats/results/llama3_1_405b')  # hardcode
+                                              output_dir='./')  # hardcode
 
     args.finetune_lr = None 
-    # if args.finetune_lr is not None:
-    #     final_finetune_config.model_name += f'=flr={args.finetune_lr}'
-    
     model, _ = load_and_convert_finetune(model, final_finetune_config,
                                          checkpoint_path=None,
                                          print_model=args.verbose,
@@ -491,18 +313,12 @@ def main():
         print(f"Loading loras")
         with torch.no_grad():
             first = 0
-            # args.run_name = finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-bs=1-gas=8-nte=2-ms=-1-se=0-re=0-in=000-out=008_ft.pt
 
             for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
                 # example file names: 
                 # ./checkpoints/ft-dl-d=0000_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=000-out=008-se=0-re=0_ft.pt
-                # ./checkpoints/ft-dl-d=0001_out=125_distill1d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125-se=0-re=0_ft.pt
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=099-out=107_distill.pt'
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=108-out=116_distill.pt'
-                # 'finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=117-out=125_distill.pt'
                 
                 # Get distill checkpoint name first
-                # load_file_name = f'{join(args.checkpoint_dir, args.run_name)}'
                 load_file_name = join(CHECKPOINT_DIR_405B, f'dl-d={args.distill_config}-m={CHECKPOINT_MODEL_CONFIG}-f={args.finetune_config}')
                 load_file_name += f'-s={args.seed}-se={args.seed}-re={args.replicate}'
                 max_digits = len(str(num_hidden_layers))
@@ -515,7 +331,6 @@ def main():
                 args.run_name = get_run_name_from_args(args)
 
                 args.run_name = join(CHECKPOINT_DIR_405B, 'ft-' + args.run_name)
-                # update_config_from_args(final_finetune_config, args)
                 args.run_name += f'-se={args.seed}-re={args.replicate}-{name_suffix}-se={args.seed}-re={args.replicate}_ft.pt'
                 load_file_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
 
@@ -550,14 +365,14 @@ def main():
                 print(f'-> {n}:\n', p)
 
     args.run_name = args.run_name.replace('llama3_1_405b/', '')
+    args.run_name = args.run_name.replace('llama3_1_70b/', '')
+    args.run_name = args.run_name.replace('llama3_1_8b/', '')
 
     print(model.config)
-    # model.save_pretrained(f'ckpt-lora_hf-{args.run_name}')
     if rank == 0:
         with torch.no_grad():
             state_dict = model.state_dict()
             keys_to_keep = [key for key in state_dict.keys() if 'lora' in key or 'window_factors' in key or 'feature_map' in key]
-            # keys_to_keep = [key for key in state_dict.keys() if 'lora' in key]
             new_state_dict = {key: state_dict[key] for key in keys_to_keep}
             torch.save(new_state_dict, f'ckpt_lora-{args.run_name}.pt')
 
@@ -565,9 +380,7 @@ def main():
         for k in torch.load(f'ckpt_lora-{args.run_name}.pt'):
             if int(k.split('layers.')[-1].split('.')[0]) < 1:
                 print(k)
-        print('-> Checkpoints saved to:', f'ckpt_lora-{args.run_name}.pt')
-        # save_file(new_state_dict, f"ckpt-{args.run_name}.safetensors")
-    
+        print('-> Checkpoints saved to:', f'ckpt_lora-{args.run_name}.pt')    
         
 
 if __name__ == '__main__':

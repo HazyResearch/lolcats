@@ -1,10 +1,10 @@
 """
-For 405B since we split out sharding.
+For block-by-block attention transfer.
 
 Alternate way to do things where we convert a block of Llama decoder layers into linear attention equivalents
 
 This lets us linearize big models in a decentralized manner without interconnect. 
-Just take a layer and train.
+Just take a block of layers and train. For instance, the following four commands could be used to perform attention transfer on the 32 attention layers of Llama 3.1 8B, in blocks of 8 layers each:
 
 python distill_llama_mini.py \
 --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
@@ -38,6 +38,8 @@ python distill_llama_mini.py \
 --layer_idx 24 --layers_per_model 8 --device 0 \
 --verbose --seed 0 --replicate 0
 """
+
+
 from typing import Optional, Tuple, Union, List
 import sys
 import os
@@ -52,11 +54,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from transformers import PretrainedConfig, LlamaConfig
+from transformers import PretrainedConfig
 from transformers.cache_utils import Cache
 from transformers.models.llama.modeling_llama import (
-    LlamaAttention, LlamaMLP, LlamaRMSNorm, LlamaConfig, 
-    LlamaModel, LlamaForCausalLM, LlamaRotaryEmbedding
+    LlamaAttention, LlamaConfig
 )
 from transformers.modeling_outputs import (
     CausalLMOutputWithPast
@@ -77,231 +78,17 @@ from src.model.convert_model import toggle_attention, remove_base_attention, tra
 from src.model.utils import count_parameters
 from src.model.convert_model import get_attention
 
-CHECKPOINT_DIR = f"/data/simran/sharded_layers_70b_interval5/" 
-DATA_DIR = "/data/simran/_data_rahul_models_Meta-Llama-3.1-70B_-interval5/"
-
-
-def get_args():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--project_name", type=str, default='lolcats')
-    parser.add_argument("--layers_per_model", type=int)
-    parser.add_argument("--layer_idx", type=int)  # specify starting layer
-    parser.add_argument("--device", type=int, default=0)
-
-    parser.add_argument("--model_config", type=str, default=None)
-    parser.add_argument("--distill_config", type=str, default=None)
-    parser.add_argument("--finetune_config", type=str, default=None)
-    parser.add_argument("--eval_config", type=str, default=None)
-
-    parser.add_argument("--pretrained_model_name_or_path", type=str, default=None)
-    parser.add_argument("--load_distill_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_distill", action='store_true', default=None)
-    
-    parser.add_argument("--load_finetune_checkpoint", type=str, default=None)
-    parser.add_argument("--resume_finetune", action='store_true', default=None)
-
-    # Override default configs
-    # Feature map / model
-    parser.add_argument("--attention_type", type=str, default=None)
-    parser.add_argument("--learned_kernel", type=str, default=None)  # always
-    parser.add_argument("--lk_skip_connection", action='store_true', default=None)
-    parser.add_argument("--lk_zero_init", action='store_true', default=None)
-    parser.add_argument("--lk_normal_init", action='store_true', default=None)
-    parser.add_argument("--tie_qk_kernels", action='store_true', default=None)
-    parser.add_argument("--train_qk", action='store_true', default=None)
-    parser.add_argument("--state_chunk_len", type=int, default=None)
-    
-    # Training
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--weight_decay", type=float, default=None)
-    parser.add_argument("--optim", type=str, default=None)
-    parser.add_argument("--scheduler", type=str, default=None)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=None)
-    parser.add_argument("--num_train_epochs", type=int, default=None)
-    parser.add_argument("--max_steps", type=int, default=None)
-    parser.add_argument("--max_finetune_steps", type=int, default=None)
-
-    parser.add_argument("--no_peft_grad_ckpt", action='store_true', default=None)
-    
-    # Dataloading
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--num_workers", type=int, default=None)
-
-    # Evaluation
-    parser.add_argument("--no_init_eval", action='store_true', default=False)
-    parser.add_argument("--eval_steps", type=int, default=None)
-    parser.add_argument("--max_eval_batches", type=int, default=None)
-
-    # Miscellaneous
-    parser.add_argument("--huggingface_token", type=str, default=None)
-    parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints')
-    parser.add_argument("--results_dir", type=str, default='./results')
-    parser.add_argument("--replicate", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--verbose", action='store_true', default=None)
-    parser.add_argument("--no_cuda", action='store_true', default=None)
-    parser.add_argument("--no_wandb", action='store_true', default=None)
-    parser.add_argument("--wandb_entity", type=str, default='hazy-research')
-    parser.add_argument("--debug", action='store_true', default=None)
-    parser.add_argument("--no_attention_mask", action='store_true', default=None)
-
-    args = parser.parse_args()
-    args.run_name = get_run_name_from_args(args)
-    return args
-
-
-# -----------
-# Mini Llamas
-# -----------
-class LlamaMiniDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, layer_idx: int, 
-                 apply_input_layernorm: bool = True):
-        super().__init__()
-        self.layer_idx = layer_idx
-        self.hidden_size = config.hidden_size
-        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
-        self.apply_input_layernorm = apply_input_layernorm  # Hack, but patch for saving attention inputs
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.45
-        # apply_input_layernorm: Optional[bool] = True,  # Ours
-        **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        
-        residual = hidden_states
-
-        # print(f"Layer {self.layer_idx}")
-        # breakpoint()
-        if self.apply_input_layernorm:  # Ours
-            hidden_states = self.input_layernorm(hidden_states) # SA: these layernorm weights are the issue.
-
-        # Self Attention
-        # breakpoint()
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
-            position_embeddings=position_embeddings,
-            **kwargs,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        # breakpoint()
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
-
-
-class LlamaMiniModel(LlamaModel):
-    def __init__(self, config: LlamaConfig):
-        super().__init__(config)
-        self.padding_idx = config.pad_token_id
-        self.vocab_size = config.vocab_size
-
-        self.embed_tokens = nn.Identity() #nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([
-            LlamaMiniDecoderLayer(config, layer_idx, apply_input_layernorm=layer_idx > 0) 
-            for layer_idx in range(config.num_hidden_layers)
-        ])
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.rotary_emb = LlamaRotaryEmbedding(config=config)
-        self.gradient_checkpointing = False
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-
-class LlamaMiniModelForCausalLM(LlamaForCausalLM):
-    """
-    Pass in `inputs_embeds` for model.forward()
-    """
-    def __init__(self, config):
-        super().__init__(config)
-        self.model = LlamaMiniModel(config)
-        self.vocab_size = config.vocab_size
-        self.lm_head = nn.Identity() #nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-            cache_position=cache_position,
-        )
-        hidden_states = outputs[0]
-        return CausalLMOutputWithPast(
-            loss=None,
-            logits=None,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
-
+from trenchcoat_args import get_args
+from trenchcoat_llama import LlamaMiniDecoderLayer, LlamaMiniModelForCausalLM, LlamaMiniModel
 
 def main():
     # ------
     # SET UP
     # ------
     args = get_args()
+
+    CHECKPOINT_DIR = args.shard_dir
+    DATA_DIR = args.attentions_data_dir
 
     # Where to save the output model checkpoints?
     checkpoint_dir = CHECKPOINT_DIR
