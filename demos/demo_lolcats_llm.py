@@ -76,7 +76,6 @@ def get_lm_eval_lolcats_model(model_kwargs: dict, lolcats_model: bool = True):
         lm = get_model('hf-causal-experimental').create_from_arg_string(
             '', lm_kwargs,
         )
-    # model = lm.model
     return lm
 
 

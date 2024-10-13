@@ -1,5 +1,5 @@
 
-# LoLCATS in a Trenchcoat
+# LoLCATS in a trenchcoat
 
 <p align="center">
 <img src="assets/hedgehog_llamas_big.png" align='center' width=35% height=35%>
@@ -51,7 +51,7 @@ cd lolcats/
 bash scripts/llama3_1_405b/405b_e2e_xent1_mse1000.sh
 ```
 
-## Running evaluations and inference
+## Evals and inference
 
-We describe how we ran evaluations for the large models in [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/inference).
+We provide evaluation code at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/inference).
 

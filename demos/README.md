@@ -1,8 +1,15 @@
 
+## Demos
 
-## Evals and inference
+We describe how to use LoLCATS checkpoints. We include:
+1. Demo script to talk to 8B and 70B parameter models using Hugging Face checkpoints
+2. Code to reproduce the MMLU numbers at 70B and 405B numbers using Hugging Face checkpoints
+3. VLLM integration with custom LoLCATS CUDA kernels 
 
-First we give basic code for MMLU evaluations. Then we provide some guidance for VLLM integration. 
+### Talk to pre-trained LoLCATS LLMs
+
+
+
 
 ### 5-shot MMLU Eval
 
