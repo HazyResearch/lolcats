@@ -8,7 +8,7 @@ We describe how to use LoLCATS checkpoints. We include:
 
 ### Talk to pre-trained LoLCATS LLMs
 
-
+Use the commands provided at `demo.sh` to run inference with our LoLCATS - Llama 3.1 8B checkpoint, which will be downloaded from Hugging Face.  The downloaded checkpoints require under <1GB, and are inserted into your local Meta Llama 3.1 model in 16-bit precision -- please ensure your model path is provided in the yaml config files that are used in `demo.sh`.
 
 
 ### 5-shot MMLU Eval
