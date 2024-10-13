@@ -11,15 +11,19 @@ from omegaconf import OmegaConf
 
 from transformers import TextStreamer, TextIteratorStreamer, AutoTokenizer
 
+import sys 
+sys.path.append("../")
+
 from src.utils.setup import seed_everything
 from src.utils.logging import print_header
 from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
 
-
 from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_sharded_model_single_gpu,
 )
+
+from huggingface_hub import hf_hub_download
 
 
 system_prompt = """{prompt}"""
@@ -28,16 +32,19 @@ system_prompt = """{prompt}"""
 def get_args():
     parser = argparse.ArgumentParser()
     # Model load + setup
-    parser.add_argument("--attn_mlp_checkpoint_path", type=str, default=None)
-    parser.add_argument("--finetune_checkpoint_path", type=str, default=None)
+    parser.add_argument("--model_config_path", type=str)
+    parser.add_argument("--finetune_config_path", type=str)
+    parser.add_argument("--distill_config_path", type=str)
+    parser.add_argument("--attn_mlp_checkpoint_path", type=str)
+    parser.add_argument("--finetune_checkpoint_path", type=str)
     parser.add_argument("--config_dir", type=str, default='configs')
     parser.add_argument("--seed", type=int, default=42)
 
     # Generation
     parser.add_argument("--num_generations", type=int, default=1)
-    parser.add_argument("--top_k", type=int, default=50)
-    parser.add_argument("--top_p", type=float, default=0.95)
-    parser.add_argument("--max_new_tokens", type=int, default=10) 
+    parser.add_argument("--top_k", type=int, default=1.0)
+    parser.add_argument("--top_p", type=float, default=1.0)
+    parser.add_argument("--max_new_tokens", type=int, default=50) 
 
     # Miscellaneous
     parser.add_argument("--benchmark", action='store_true', default=False)
@@ -45,15 +52,7 @@ def get_args():
     parser.add_argument("--debug", action='store_true', default=False)
     parser.add_argument("--huggingface_token", type=str, default=None)
 
-    # Alt
-    parser.add_argument("--attn_checkpoint_path", type=str, default=None)
-    parser.add_argument("--peft_checkpoint_path", type=str, default=None)
-
     args = parser.parse_args()
-    if args.attn_mlp_checkpoint_path is None and args.attn_checkpoint_path is not None:
-        args.attn_mlp_checkpoint_path = args.attn_checkpoint_path
-    if args.finetune_checkpoint_path is None and args.peft_checkpoint_path is not None:
-        args.finetune_checkpoint_path = args.peft_checkpoint_path
     return args
 
 
@@ -121,9 +120,6 @@ class BatchTextIteratorStreamer(TextIteratorStreamer):
                 self.print_len[idx] += len(printable_text)
             else:
                 printable_text = text[self.print_len[idx] : text.rfind(" ") + 1]
-                # printable_text = text[self.print_len[idx] : self.print_len[idx] + 1]
-                # if printable_text == '':
-                    # printable_text = self.stop_signal
                 self.print_len[idx] += len(printable_text)
             printable_texts.append(printable_text)
 
@@ -139,7 +135,6 @@ class BatchTextIteratorStreamer(TextIteratorStreamer):
                 self.print_len[idx] = 0
             else:
                 printable_text = ""
-                # printable_text = self.stop_signal
             printable_texts.append(printable_text)
 
         self.next_tokens_are_prompt = True
@@ -156,19 +151,12 @@ class BatchTextIteratorStreamer(TextIteratorStreamer):
                          for x in self.text_queue.queue ]) 
                 for i in range(len(self.text_queue.queue[0]))
             ]
-            # text = '\n\n'.join(self.text_queue.queue[0])
             text = '\n------------\n'.join(text)
             go_up = "\033[F" * self.go_up  # len(text)  # Goes up this many lines
-            # go_down = "\n" * self.go_up  #  len(text)  # Goes up this many lines
             print(f'{text}', flush=True, end="" if not stream_end else None)
-            # print(f'{go_up}{text}', end="" if not stream_end else None)
 
-            # self.go_up = self.batch_size
         except Exception as e:
             print(self.stop_signal)
-            # print(text)
-            # print(e)
-            # return
 
 def count_params(module) -> int:
     return sum(p.numel() for p in module.parameters())
@@ -201,61 +189,91 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
     return config
 
 
+def load_hf_weights(model, distill_repo_id, ft_repo_id, filename="model.pt"):
+    for repo_id in [distill_repo_id, ft_repo_id]:
+        print(f"Loading weights from {repo_id}")
+
+        local_file_path = hf_hub_download(repo_id=repo_id, filename=filename)    
+        state_dict = torch.load(local_file_path)['model_state_dict']
+        _keys = model.load_state_dict(state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'base_model.model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+
+        try:
+            assert len(_keys.unexpected_keys) == 0
+            print_header('*** All expected keys matched successfully ***')
+        except Exception as e:
+            print(e)
+            print_header('*** Error: unexpected keys in checkpoint ***')
+            print('Unexpected keys:')
+            for k in _keys.unexpected_keys:
+                print(k)
+            exit()
+
+    return model
+
+
 def load_model_from_checkpoint(attn_mlp_checkpoint_path: str, 
                                finetune_checkpoint_path: str, 
+                               model_config_path: str,
+                               distill_config_path: str,
+                               finetune_config_path: str,
                                config_dir: str = 'configs',
                                print_model: bool = False, 
                                debug: bool = False,
                                huggingface_token: str = None):
+
+    is_local = attn_mlp_checkpoint_path.endswith(".pt")
+    
     rank = 0
-    # Get configs from checkpoint paths
-    try:
-        model_config = attn_mlp_checkpoint_path.split('-m=')[-1].split('-f=')[0]
-        distill_config = attn_mlp_checkpoint_path.split('-d=')[-1].split('-m=')[0]
-    except Exception as e:
-        model_config = finetune_checkpoint_path.split('-m=')[-1].split('-f=')[0]
-        distill_config = None
-    
-    model_config = join(config_dir, 'model', f'{model_config}.yaml')
-    model_config = OmegaConf.load(model_config)
-    
-    if distill_config is not None:
-        distill_config = join(config_dir, 'experiment', f'{distill_config}.yaml')
-        distill_config = OmegaConf.load(distill_config)
-    else:
-        distill_config = {}
+    model_config = OmegaConf.load(model_config_path)
+    distill_config = OmegaConf.load(distill_config_path)
+    finetune_config = OmegaConf.load(finetune_config_path)
 
-    finetune_config = finetune_checkpoint_path.split('-f=')[-1].split('-')[0]
-    finetune_config = join(config_dir, 'experiment', f'{finetune_config}.yaml')
-    finetune_config = OmegaConf.load(finetune_config)
-
-    # Load initial model
+    # Load initial transformer model
     model_loader = get_pretrained_loader(**model_config.model, 
                                          huggingface_token=huggingface_token)
     tokenizer = model_loader.load_tokenizer()
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = 'left'
-
     model = model_loader.load(model_config['attention']['attention_type'])
-    if debug:
-        print_header('Pretrained Model')
-        print(model)
 
-    # Add subquadratic attentions
+    # Swap the softmax to linear attention 
+    if is_local:
+        checkpoint_path = attn_mlp_checkpoint_path
+    else: 
+        checkpoint_path = None
     model, distill_peft_config = load_and_convert_attns(model, model_config,
-                                                        attention_type=None,  # in model_config
-                                                        checkpoint_path=attn_mlp_checkpoint_path,
+                                                        attention_type=None, 
+                                                        checkpoint_path=checkpoint_path,
                                                         print_model=debug,
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=False,
                                                         train_attention=False)
     
     # Add PEFT parameters
+    if is_local:
+        checkpoint_path = attn_mlp_checkpoint_path
+    else: 
+        checkpoint_path = None
     model, ft_peft_config = load_and_convert_finetune(model, finetune_config,
-                                                      checkpoint_path=finetune_checkpoint_path,
+                                                      checkpoint_path=checkpoint_path,
                                                       print_model=debug,
                                                       merge_loras=False,
                                                       peft_gradient_checkpointing=False)
+
+    # Load from huggingface checkpoints and insert into the model dict 
+    if not is_local:
+        model = load_hf_weights(
+            model, 
+            attn_mlp_checkpoint_path, finetune_checkpoint_path, 
+            filename="model.pt"
+        )
+
     if print_model:
         print_header('*** Model after checkpoint load ***')
         print(model)
@@ -263,49 +281,20 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str,
     return model, model_config, tokenizer
 
 
-def get_model_name(attn_mlp_checkpoint_path: str, finetune_checkpoint_path: str, 
-                   model_config: str = None):
-    model_name = '🦔 ' if attn_mlp_checkpoint_path is not None else ''
-    if 'llama3_8b_' in finetune_checkpoint_path:
-        model_name += f'Llama-3-8B'
-    elif 'llama2_7b_' in finetune_checkpoint_path:
-        model_name += f'Llama-2-7B'
-    elif 'mistral_7b_' in finetune_checkpoint_path:
-        model_name += f'Mistral-7B'
-
-    if attn_mlp_checkpoint_path is not None:
-        model_name += f'-Hedgehog'
-
-    if 'alpaca_clean' in finetune_checkpoint_path:
-        model_name += f'-Alpaca'
-
-    elif model_config is not None:
-        if 'llama3_8b_' in model_config:
-            model_name += f'Llama-3-8B'
-        elif 'llama2_7b_' in model_config:
-            model_name += f'Llama-2-7B'
-        elif 'mistral_7b_' in model_config:
-            model_name += f'Mistral-7B'
-
-    return model_name
-
-
 def main():
     args = get_args()
     seed_everything(args.seed)
     model, model_config, tokenizer = load_model_from_checkpoint(
         args.attn_mlp_checkpoint_path, args.finetune_checkpoint_path, 
+        args.model_config_path, args.distill_config_path, args.finetune_config_path,
         config_dir=args.config_dir, print_model = args.print_model, debug = args.debug,
     )
     model.eval()
     input_len = len(tokenizer(system_prompt)['input_ids'])
 
-    model_name = get_model_name(args.attn_mlp_checkpoint_path, 
-                                args.finetune_checkpoint_path, 
-                                model_config)
     while True:
         print(f'\n>> Generating {args.num_generations} responses in parallel')
-        prompt = input(f'>> Message {model_name} (or cmd-c to quit)... ')
+        prompt = input(f'>> Your prompt: (or cmd-c to quit)... ')
         all_prompts = [system_prompt.format(prompt=prompt)] * args.num_generations
 
         
@@ -318,7 +307,6 @@ def main():
                                                  skip_prompt=True,)
     
         with torch.no_grad():
-            breakpoint()
             model_input = tokenizer(all_prompts, return_tensors="pt").to(model.device)
 
             if args.benchmark:
@@ -345,3 +333,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
