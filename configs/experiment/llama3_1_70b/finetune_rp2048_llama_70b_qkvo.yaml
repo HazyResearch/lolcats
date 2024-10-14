@@ -1,21 +1,26 @@
 dataset:
-  name: redpajama_sample
+  name: redpajama_sample_contig
   dataset_config:
     train_data: 
     - redpajama/train.json[50000]
     eval_data:
-    - redpajama/train.json # [5000]
+    - redpajama/train.json
+    num_train_samples: 10000  # (8 * 1250) * (2048) = 20M
+    max_train_samples: 40000
     max_eval_num: 1000
     max_length: 32768
-    min_length: 1024
+    min_length: 2048
     chat_template: llama-3
-    chunk_size: 1024  # sequence length for distilling
+    chunk_size: 2048  # sequence length for distilling
     seed: 42
-    cache_dir: "data/rp"
-    use_c4: false
+    cache_dir: "data/rp"  # Change this to where you want to save
+    load_from_cache_file: true
+    esl_model_config: llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01
+    filter_by_esl: true
+    dataloaders_dir: '/home/rahul/code/clean/lolcats/src/dataloaders'
   pretrained_model_config:
-    pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b" # TODO: Set this to where you want to save the Meta HF checkpoint weights
+    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-70B/"
+    cache_dir: null
   preprocess_config: null
 
 dataloader:
@@ -42,7 +47,7 @@ trainer: # HuggingFace Trainer-like arguments
   train_split: train
   val_split: validation
   num_train_epochs: 2
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 2
   seed: 42
   batch_size: 1
   load_best_model_at_end: true
@@ -51,23 +56,21 @@ trainer: # HuggingFace Trainer-like arguments
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 100
+  eval_steps: 5  # 10
   max_eval_batches: null
 
 finetune:
   method: lora
   kwargs:
-    r: 8
-    lora_alpha: 16 
-    lora_dropout: 0 # 0.05
+    r: 4
+    lora_alpha: 8
+    lora_dropout: 0.05
     target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
-  trainable_weights: ['feature_map_q.mlp.layer', 'feature_map_k.mlp.layer', 'window_factors']
 
 fsdp:
   save_model: true 
   run_validation: true
   use_fp16: false
   save_optimizer: false
-  gradient_clipping: true 
+  gradient_clipping: true  # false
   gradient_clipping_threshold: 1.0
-
