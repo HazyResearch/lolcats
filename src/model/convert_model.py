@@ -112,6 +112,10 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention import LolcatsTKWindowAttention
         return partial(LolcatsTKWindowAttention, **kwargs)
 
+    elif attention_type == 'lolcats_llama_window_tk_gen':
+        from .linear_attention import LolcatsWindowAttentionTKGen
+        return partial(LolcatsWindowAttentionTKGen, **kwargs)
+
     elif attention_type == 'lolcats_long_llama_window_tk':
         from .linear_attention import LolcatsTKWindowLongAttention
         return partial(LolcatsTKWindowLongAttention, **kwargs)
@@ -140,14 +144,6 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention.linear_window_attention_sw_scale import LolcatsSlidingWindowAttention
         return partial(LolcatsSlidingWindowAttention, **kwargs)
 
-    elif attention_type == 'lolcats_llama_window_tk_faster':
-        from .linear_attention.fast_linear_window_attention_tk import FasterLolcatsTKWindowAttention
-        return partial(FasterLolcatsTKWindowAttention, **kwargs)
-
-    elif attention_type == 'cylon_lolcats_llama_window_tk':
-        from .linear_attention.cylon_linear_attention import CylonLolcatsTKWindowAttention
-        return partial(CylonLolcatsTKWindowAttention, **kwargs)
-
     else:
         print(f'-> attention_type {attention_type} not handled... returning None')
         return None
@@ -161,6 +157,10 @@ def get_attention_cache(attention_type: str, past_key_values: any = None):
         return past_key_values
 
     # print(f'Returning attention cache based on attention_type == {attention_type}')
+    elif 'lolcats_llama_window_tk_gen' in attention_type:
+        from .linear_attention import LinearAttentionTKWindowGenerationCache
+        return LinearAttentionTKWindowGenerationCache()
+
     elif 'llama_window_tk' in attention_type:
         from .linear_attention import LinearAttentionTKWindowCache
         return LinearAttentionTKWindowCache()

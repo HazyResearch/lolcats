@@ -2,18 +2,32 @@
 ## Demos
 
 We describe how to use LoLCATS checkpoints. We include:
-1. Demo script to talk to 8B and 70B parameter models using Hugging Face checkpoints
-2. Code to reproduce the MMLU numbers at 70B and 405B numbers using Hugging Face checkpoints
-3. VLLM integration with custom LoLCATS CUDA kernels 
+1. Demo script to talk to our models using Hugging Face checkpoints
+2. Demo script to benchmark the pretrained 8B linearized versus base softmax attention models
+3. Code to reproduce the MMLU numbers at 70B and 405B numbers using our uploaded HuggingFace checkpoints
+4. Coming soon: VLLM integration with custom LoLCATS CUDA kernels!
 
 ### Talk to pre-trained LoLCATS LLMs
 
-Use the commands provided at `demo.sh` to run inference with our LoLCATS - Llama 3.1 8B checkpoint, which will be downloaded from Hugging Face.  The downloaded checkpoints require under <1GB, and are inserted into your local Meta Llama 3.1 model in 16-bit precision -- please ensure your model path is provided in the yaml config files that are used in `demo.sh`.
+Use the commands provided at `demo_8b.sh` to run inference with our LoLCATS - Llama 3.1 8B checkpoint, which will be downloaded from Hugging Face.  The downloaded checkpoints require under <1GB, and are inserted into your local Meta Llama 3.1 model in 16-bit precision -- please ensure you have downloaded the base model and specify your path to it in the configs in `demo_8b.sh`. To run the demo:
+```bash
+bash demo_8b.sh
+```
 
+### Fast inference with custom CUDA kernels
+
+We provide a custom CUDA prefill kernel written in the [ThunderKittens framework](https://github.com/HazyResearch/ThunderKittens).
+
+As a quick end-to-end compare the prefill speed of the linearized LoLCATS 8B vs. the base Llama 8B model, we provide a script at:
+```bash
+bash benchmark_8b.sh
+```
+
+The code will print out the inference tokens per second per method. 
 
 ### 5-shot MMLU Eval
 
-First get the 5-shot MMLU data. This was directly saved to pickle from the lm-eval-harness.
+First get the 5-shot MMLU data. We directly saved the tokenized examples produced by the [lm-eval-harness](https://github.com/EleutherAI/lm-evaluation-harness) codebase to a pickle file
 ```
 cd lolcats/inference/
 unzip mmlu.pkl.zip
@@ -28,17 +42,15 @@ bash scripts/llama3_1_70b/rp_2048_contig/cria_prepare/eval.sh
 These call to the `lolcats/inference/evals/eval_mmlu.py` file, which just loops through mmlu.pkl and uses the last-token model logits to get the predictions.
 
 
-### VLLM Integration 
+### Coming Soon: VLLM Integration 
 
-*Warning* Paged attention can create some issues for these models, this code is lightly tested and sufficient for shorter-context tasks like LM-Eval Harness tasks.
-
-### 1. Clone VLLM
+#### 1. Clone VLLM
 Also run VLLM installations.
 ```bash
 git clone https://github.com/vllm-project/vllm
 ``` 
 
-### 2. Copy the following LoLCATS specific files into vllm.
+#### 2. Copy the following LoLCATS specific files into vllm.
 
 ```
 bash 
@@ -50,7 +62,7 @@ And add the new LoLCATS models from:
 lolcats/inference/vllm_files/__init__.py -> vllm/model_executor/models/__init__.py
 ```
 
-###  3. Set the model checkpoint paths. 
+####  3. Set the model checkpoint paths. 
 
 Given your local download of the 405B weights, go to the ```Meta-Llama-3.1-405B/config.py``` file and modify the architecture list from ```LlamaForCausalLM``` to ```LlamaLolcatsForCausalLM```. 
 
@@ -62,7 +74,7 @@ python lolcats/inference/save_fsdp_to_hf_pt.py
 ```
 Be sure to hard-code the ```attn_mlp_checkpoint_path``` (containing the feature map and window factor weights) and ```finetune_checkpoint_path``` (containing the LoRA weights) into this file. This will spit out a ```.pt``` file.
 
-### 4. Run VLLM. 
+#### 4. Run VLLM. 
 
 These instructions assume you have 2 nodes of $8 \times 80$GB to fit the FP16 405B model. You are okay with 1 node for 70B parameters.
 ```bash
@@ -77,7 +89,7 @@ ray start --address='ip from above' # on node 2
 vllm serve /path/to/hf/model/Meta-Llama-3.1-405B --tensor-parallel-size 16 --enforce-eager # on node 1
 ```
 
-### 5. Clone LM-Eval harness and run inference evaluations: 
+#### 5. Clone LM-Eval harness and run inference evaluations: 
 ```bash
 git clone https://github.com/EleutherAI/lm-evaluation-harness
 git checkout b281b092
@@ -93,7 +105,7 @@ lm_eval --model local-completions --tasks piqa,hellaswag,winogrande,arc_challeng
 lm_eval --model local-completions --tasks mmlu --num_fewshot 5 --model_args model='/path/to/hf/model/Meta-Llama-3.1-405B',base_url=http://localhost:8000/v1/completions,num_concurrent=1,max_retries=3,tokenized_requests=False --batch_size 1 --output save/ 
 ```
 
-### References
+#### References
 Please cite the following if you use their work:
 
 ```

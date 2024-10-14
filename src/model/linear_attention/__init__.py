@@ -13,3 +13,7 @@ from .linear_window_attention_tk_long import (
 from .linear_window_attention_tk_bf16 import (
     LolcatsTKWindowAttentionBF16,
 )
+from .linear_window_attention_tk_gen import (
+    LolcatsWindowAttentionTKGen, LinearAttentionTKWindowGenerationCache
+)
+

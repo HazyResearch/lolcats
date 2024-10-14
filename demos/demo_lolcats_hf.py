@@ -43,11 +43,15 @@ def get_args():
     parser.add_argument("--config_dir", type=str, default='configs')
     parser.add_argument("--seed", type=int, default=42)
 
+    # Inference
+    parser.add_argument("--use_cuda_kernels", type=int, default=0)
+    parser.add_argument("--use_attention", action='store_true', default=False)
+
     # Generation
     parser.add_argument("--num_generations", type=int, default=1)
     parser.add_argument("--top_k", type=int, default=1.0)
     parser.add_argument("--top_p", type=float, default=1.0)
-    parser.add_argument("--max_new_tokens", type=int, default=2) 
+    parser.add_argument("--max_new_tokens", type=int, default=50) 
 
     # Miscellaneous
     parser.add_argument("--benchmark", action='store_true', default=False)
@@ -234,7 +238,9 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
                                config_dir: str = 'configs',
                                print_model: bool = False, 
                                debug: bool = False,
-                               huggingface_token: str = None):
+                               huggingface_token: str = None,
+                               use_cuda_kernels: bool = False,
+                               use_attention: bool = False):
 
     is_local = attn_mlp_checkpoint_path.endswith(".pt")
     
@@ -249,7 +255,14 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
     tokenizer = model_loader.load_tokenizer()
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = 'left'
+    if use_attention:
+        model = model_loader.load('softmax')
+        return model, model_config, tokenizer
+
     model = model_loader.load(model_config['attention']['attention_type'])
+    if use_cuda_kernels:
+        print('*** Using TK CUDA kernels **')
+        model_config['attention']['attention_type'] = 'lolcats_llama_window_tk_gen'
 
     # Swap the softmax to linear attention 
     if is_local:
@@ -282,6 +295,8 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
             attn_mlp_checkpoint_path, finetune_checkpoint_path, 
             filename="model.pt"
         )
+    if use_cuda_kernels:
+        print('*** Using TK CUDA kernels ***')
 
     if print_model:
         print_header('*** Model after checkpoint load ***')
@@ -297,13 +312,21 @@ def main():
         args.attn_mlp_checkpoint_path, args.finetune_checkpoint_path, 
         args.model_config_path, args.distill_config_path, args.finetune_config_path,
         config_dir=args.config_dir, print_model = args.print_model, debug = args.debug,
+        use_cuda_kernels = args.use_cuda_kernels,
+        use_attention = args.use_attention,
     )
+    model = model.to('cuda')
     model.eval()
     input_len = len(tokenizer(system_prompt)['input_ids'])
 
     while True:
         print(f'\n>> Generating {args.num_generations} responses in parallel')
-        prompt = input(f'>> Your prompt: (or cmd-c to quit)... ')
+        if args.use_cuda_kernels or args.benchmark:
+            # 101424: need the prompt to be a multiple of 64 for our current kernel
+            prompt = "Create a summary of the following passage: London is the capital city of England and the United Kingdom. It is a leading global city with strengths in the arts, commerce, education, entertainment, fashion, finance, healthcare, media, professional services, research and development, tourism, and transport all contributing to its prominence. It is one of the most populous cities in the world, with an estimated population of 8.9 million in 2019. At its centre stand the imposing Houses of Parliament, the iconic ‘Big Ben’ clock tower and Westminster Abbey, site of British monarch coronations. Across the Thames River, the London Eye observation wheel provides panoramic views of the South Bank cultural complex, and the entire city. London exerts a strong influence on world art, entertainment, fashion, commerce, finance, education, healthcare, media, science, technology, tourism, transport, and communications. London's cultures encompass over 300 languages. The 2023 population of Greater London is just under 10 million people. The Greater London Built-up Area is the fourth-most populous in current Europe. Until 1889, the name 'London' applied officially only to the City of London, but since then it has also referred to the County of London and to the Greater London area"
+            prompt = " ".join([prompt]*32)[:-5] #+ "area where we are all living. Now, let's see what the"
+        else:
+            prompt = input(f'>> Your prompt: (or cmd-c to quit)... ')
         all_prompts = [system_prompt.format(prompt=prompt)] * args.num_generations
 
         
@@ -317,6 +340,7 @@ def main():
     
         with torch.no_grad():
             model_input = tokenizer(all_prompts, return_tensors="pt").to(model.device)
+            print(model_input['input_ids'].shape)
 
             if args.benchmark:
                 torch.cuda.synchronize()
@@ -329,6 +353,7 @@ def main():
                                           num_return_sequences=1,
                                           pad_token_id=tokenizer.eos_token_id,
                                           streamer=streamer)
+            
             if args.benchmark:
                 torch.cuda.synchronize()
                 elapsed = time.time() - start_time
@@ -339,6 +364,8 @@ def main():
                 print(f'├── Total tokens processed + generated:   {total_tokens}')
                 print(f'├── Throughput (lagged by last response): {total_tokens / elapsed:.3f} tokens/sec')
                 
+        if 1: #args.use_cuda_kernels:
+            break
 
 if __name__ == '__main__':
     main()
