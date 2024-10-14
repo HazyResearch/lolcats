@@ -39,6 +39,7 @@ srun  torchrun --nnodes 2 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_bac
     --verbose --replicate 0 --seed 0 --lk_zero_init \
     --eval_steps 100 --dataset_chunk_size 1024 \
     --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
+    --tag hf_405b_mmlu \
     --finetune_checkpoint_path hazyresearch/lolcats-llama-3.1-405b
 
 

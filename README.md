@@ -7,13 +7,14 @@
 
 This readme describes how we linearize the full Llama 3.1 model family -- 8B, 70B and 405B -- for the first time! 
 
-## Overview: Linearizing the Llama 3.1 family.
+## Linearizing the Llama 3.1 family
 
-This section provides sample scripts with commands to train your own models. As a brief overview, the commands have a (1) *distill-stage config* and (2) *finetune-stage config* to specify the optimizer scheduler and data for the attention transfer and LoRA fine-tune stages respectively. The commands also have a (3) model config to specify the architecture. In each config and script that you use, be sure to check for any paths that need to be updated with respect to your setup.
+This section provides sample scripts with commands to train your own models. As a brief overview, the commands have a (1) *distill-stage config* and (2) *finetune-stage config* to specify the optimizer scheduler and data for the attention transfer and LoRA fine-tune stages respectively. The commands also have a (3) model config to specify the architecture. In each config and script that you use, be sure to check for any paths that need to be updated with respect to your setup. 
 
-### Setup 
 
-Please see the main branch README for environment setup instructions. Additionally:
+### Downloading data and models 
+
+Please see the main branch README for environment setup instructions.
 
 *Data*: We explored two main datasets -- [Alpaca](https://huggingface.co/datasets/yahma/alpaca-cleaned) and [RedPajama](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data) -- in our paper and provide sample scripts for training with these in this repo. Both datasets are relatively small so we don't need to worry too much about space. Alpaca data will automatically download from HuggingFace. Follow these instructions to download the RedPajama data: [Long LLM Repo](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data), also provided below:
 ```
@@ -24,6 +25,21 @@ tar -xzvf long-llm.tar.gz
 ```
 
 *Models*: Please download [Meta Llama models](https://huggingface.co/meta-llama) to your local machine in 16-bit precision. 
+
+
+### Quick demos and inference
+
+We include sample HuggingFace checkpoints for the each linearized Llama 3.1 model:
+- [LoLCATS-Llama-3.1-8B](https://huggingface.co/hazyresearch/lolcats-llama-3.1-8b-distill)
+- [LoLCATS-Llama-3.1-70B](https://huggingface.co/hazyresearch/lolcats-llama-3.1-70b)
+- [LoLCATS-Llama-3.1-405B](https://huggingface.co/hazyresearch/lolcats-llama-3.1-405b)
+
+We provide demo code to: 
+1. Talk to these models
+2. Benchmark the 8B models using our ThunderKittens CUDA kernel for inference prefill
+3. Reproduce MMLU scores at 70B and 405B
+
+VLLM integration is coming soon! Please find details to run these demos at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/demos/).
 
 ### Linearizing Llama 8B
 
@@ -77,11 +93,7 @@ self.register_buffer("inv_freq", inv_freq, persistent=True) # LoLCATS Flag
 self.original_inv_freq = self.inv_freq
 ```
 
-## Quick demos and inference
 
-We provide details at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/demos/).
-
-
-Feel free to reach out if you have questions!
+Let us know if you have questions or interest in using these ideas!
 
 

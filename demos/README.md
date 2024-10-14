@@ -18,6 +18,16 @@ bash demo_8b.sh
 
 We provide a custom CUDA prefill kernel written in the [ThunderKittens framework](https://github.com/HazyResearch/ThunderKittens).
 
+To install the kernel:
+```bash
+# Clone the repo
+git clone https://github.com/HazyResearch/ThunderKittens
+cd ThunderKittens
+# In config.py, select 'hedgehog', then run:
+source env.src
+python setup.py install 
+```
+
 As a quick end-to-end compare the prefill speed of the linearized LoLCATS 8B vs. the base Llama 8B model, we provide a script at:
 ```bash
 bash benchmark_8b.sh
@@ -33,13 +43,14 @@ cd lolcats/inference/
 unzip mmlu.pkl.zip
 ```
 
-We used these scripts, plugging in our `.pt` file of learned linear attention map and LoRA weights:
-```
-sbatch scripts/llama3_1_405b/rp_trenchcoat/405_mmlu_eval.sh
-bash scripts/llama3_1_70b/rp_2048_contig/cria_prepare/eval.sh
+We provide scripts to eval our 70B and 405B LoLCATS linearized checkpoints on HuggingFace on MMLU
+```bash
+cd lolcats/
+bash demos/llm_mmlu_eval/demo_70b.sh    # runs on 1 8x80GB H100 node
+sbatch demos/llm_mmlu_eval/demo_405b.sh # set to use 2 8x80GB H100 nodes
 ```
 
-These call to the `lolcats/inference/evals/eval_mmlu.py` file, which just loops through mmlu.pkl and uses the last-token model logits to get the predictions.
+These call to the `demos/llm_mmlu_eval/eval_mmlu.py` file, which just loops through mmlu.pkl and uses the last-token model logits to get the predictions.
 
 
 ### VLLM Integration 
