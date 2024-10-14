@@ -40,7 +40,7 @@ By passing in the same configurations files and arguments to both scripts, `dist
 
 We provide a scripts to linearize Llama 3.1 405B, and this can be completed with access to three nodes of 8x80GB H100 GPUs, within a few days.
 
-**Code structure**: For 405B, our general approach is to (1) break the Llamas into little blocks (["crias", baby llamas](https://en.wikipedia.org/wiki/Cria)) of layers, (2) replace the softmax-attentions with LoLCATS linear attentions and train the linear layers' feature maps to match the outputs from softmax, (3) put all the little LoLCATS back together with some LoRA adaptation -- hence, LoLCATS in a Trenchcoat. 
+*Code structure*: For 405B, our general approach is to (1) break the Llamas into little blocks (["crias", baby llamas](https://en.wikipedia.org/wiki/Cria)) of layers, (2) replace the softmax-attentions with LoLCATS linear attentions and train the linear layers' feature maps to match the outputs from softmax, (3) put all the little LoLCATS back together with some LoRA adaptation -- hence, LoLCATS in a Trenchcoat. 
 
 Please find more discussion on this block-wise approach and our motivation for it (as opposed to joint attention transfer across all layers) in Section 3 of our paper. 
 
@@ -54,10 +54,10 @@ The core files for trenchcoat training are located at [lolcats/llama_recipes/tre
 
 4. [stitch_mini_finetune.py](https://github.com/HazyResearch/lolcats/blob/lolcats-scaled/llama_recipes/trenchcoat_lolcat/stitch_mini_finetune.py): stitch the blocks together and fine-tune them with LoRA. Here, we need multiple nodes to fit the full stitched Llama 3.1 405B model -- we're back at 126 layers.
 
-5. [](https://github.com/HazyResearch/lolcats/blob/lolcats-scaled/llama_recipes/trenchcoat_lolcat/save_fsdp_to_pt.py): take all the sharded files from the LoRA stage FSDP and put them in a single .pt file for convenience. This takes a couple of seconds.
+5. [save_fsdp_to_pt.py](https://github.com/HazyResearch/lolcats/blob/lolcats-scaled/llama_recipes/trenchcoat_lolcat/save_fsdp_to_pt.py): take all the sharded files from the LoRA stage FSDP and put them in a single .pt file for convenience. This takes a couple of seconds.
 
 
-**Scripts** We provide sample scripts and details for the block-by-block approach (approach 2) at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/data=rp_len=1024_trenchcoat/) We also discuss and point to sample scripts for some of the baseline approaches to block-wise 405B at that README.
+*Scripts* We provide sample scripts and details for the block-by-block approach (approach 2) at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/data=rp_len=1024_trenchcoat/) We also discuss and point to sample scripts for some of the baseline approaches to block-wise 405B at that README.
 
 **IMPORTANT: Additional Setup Note**: To use the cria-by-cria distillation approach: we need to set "self.register_buffer("inv_freq", inv_freq, persistent=True) in the [Transformers modeling_llama.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py) file, when you install.
 ```
