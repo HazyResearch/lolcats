@@ -247,8 +247,11 @@ python distill_llama.py --model_config distill_llama3_1_8b_lk_t2r \
 
 ### Demoing linear attention 7B+ models
 
-The above scripts will save two checkpoints: (1) for the learned attention feature maps (denoted by a `_distill` suffix), (2) for the LoRA finetuning weights (denoted by a `_ft` suffix). We upload a couple starter checkpoints in `./checkpoints/`, where for any linearized LLM we only need to save these layers (~0.2% of a 7B LLM's parameters). (We also provide additional checkpoints on HuggingFace). To chat with these models (albeit in an unoptimized PyTorch implementation), you can run:
+The above scripts will save two checkpoints: (1) for the learned attention feature maps (denoted by a `_distill` suffix), (2) for the LoRA finetuning weights (denoted by a `_ft` suffix). We uploaded a couple starter checkpoints in `./checkpoints/`, where for any linearized LLM we only need to save these layers (~0.2% of a 7B LLM's parameters). (We also provide additional checkpoints on HuggingFace). 
 
+To chat with these models (albeit in an unoptimized PyTorch implementation), you can run:
+
+**Llama 3.1 8B**  
 ```bash
 python -Wignore demo_lolcats_llm.py \
 --attn_mlp_checkpoint_path './checkpoints/distill_llama3_1_8b_lk_smd_wtk64_fd64_w01/dl-d=distill_alpaca_clean_xent0_mse1000_lr1e-2-m=distill_llama3_1_8b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_alpaca_clean-s=0-se=0-re=420-lzi=1_distill.pt' \
@@ -256,6 +259,7 @@ python -Wignore demo_lolcats_llm.py \
 --num_generations 1 --benchmark
 ```
 
+**Llama 3 8B**  
 ```bash
 python -Wignore demo_lolcats_llm.py \
 --attn_mlp_checkpoint_path './checkpoints/distill_llama3_8b_lk_smd_wtk64_fd64_w01/dl-d=distill_alpaca_clean_xent0_mse1000_lr1e-2-m=distill_llama3_8b_lk_smd_wtk64_fd64_w01-f=finetune_lora_qkvo_alpaca_clean-s=0-se=0-re=12-lzi=1_distill.pt' \
