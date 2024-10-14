@@ -238,7 +238,7 @@ def main():
     model = load_and_convert_attns(
         model,
         model_config,
-        attention_type=None, # specified in model_config,
+        attention_type=None, 
         checkpoint_path=None,
         print_model=args.verbose,
         train_attention=False)[0]
@@ -296,8 +296,7 @@ def main():
     # Step 4. Add finetuning parameters. 
     final_finetune_config, args = prepare_finetune_configs(args, model_config, 
                                                            args.final_finetune_config)
-    final_finetune_config = setup_fsdp_config(final_finetune_config, args, 'finetune',
-                                              output_dir='./')  # hardcode
+    final_finetune_config = setup_fsdp_config(final_finetune_config, args, 'finetune', output_dir='./') 
 
     args.finetune_lr = None 
     model, _ = load_and_convert_finetune(model, final_finetune_config,
@@ -306,42 +305,6 @@ def main():
                                          merge_loras=False,
                                          peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                          rank=rank)
-    
-
-    # Step 5. Add the lora weights from mini-distill. 
-    if args.load_finetuned_loras:
-        print(f"Loading loras")
-        with torch.no_grad():
-            first = 0
-
-            for layer_idx, layer in enumerate(tqdm(traverse_layers(model))):
-                # example file names: 
-                # ./checkpoints/ft-dl-d=0000_out=008_distill0d-m=llama3_1_405b/distill_llama3_1_405b_lk_smd_wtk64_fd64_w01-f=llama3_1_405b/finetune_layer_mini_xent1_mse1000-s=0-se=0-re=0-in=000-out=008-se=0-re=0_ft.pt
-                
-                # Get distill checkpoint name first
-                load_file_name = join(CHECKPOINT_DIR_405B, f'dl-d={args.distill_config}-m={CHECKPOINT_MODEL_CONFIG}-f={args.finetune_config}')
-                load_file_name += f'-s={args.seed}-se={args.seed}-re={args.replicate}'
-                max_digits = len(str(num_hidden_layers))
-                start, end = first, first + (args.layers_per_model - 1)
-                name_suffix = f'in={start:0{max_digits}d}-out={end:0{max_digits}d}'
-                load_file_name += f'-{name_suffix}_distill.pt' 
-                load_file_name = load_file_name.replace('True', '1').replace('False', '0')  # concise hacks
-                args.load_distill_checkpoint = load_file_name
-                print('args.load_distill_checkpoint:', args.load_distill_checkpoint)
-                args.run_name = get_run_name_from_args(args)
-
-                args.run_name = join(CHECKPOINT_DIR_405B, 'ft-' + args.run_name)
-                args.run_name += f'-se={args.seed}-re={args.replicate}-{name_suffix}-se={args.seed}-re={args.replicate}_ft.pt'
-                load_file_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
-
-                if (layer_idx + 1) % args.layers_per_model == 0:
-                    if rank == 0 or not args.enable_fsdp:
-                        print(f'Loading layer loras from {CHECKPOINT_DIR_405B}...')
-                        mini_weights = torch.load(load_file_name)['model_state_dict']
-                        mini_weights = rename_state_dict(mini_weights, first)
-                        _keys = model.load_state_dict(mini_weights, strict=False)
-                        check_state_dict_keys(_keys, first)
-                    first = layer_idx + 1
     
     # Actual final run name / checkpoint naming
     if (args.final_finetune_config is not None and 

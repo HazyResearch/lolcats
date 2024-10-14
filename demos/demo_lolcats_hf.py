@@ -23,7 +23,10 @@ from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
     load_sharded_model_single_gpu,
 )
 
-from huggingface_hub import hf_hub_download
+try:
+    from huggingface_hub import hf_hub_download
+except ImportError:
+    print("Please pip install huggingface-hub")
 
 
 system_prompt = """{prompt}"""
@@ -35,8 +38,8 @@ def get_args():
     parser.add_argument("--model_config_path", type=str)
     parser.add_argument("--finetune_config_path", type=str)
     parser.add_argument("--distill_config_path", type=str)
-    parser.add_argument("--attn_mlp_checkpoint_path", type=str)
-    parser.add_argument("--finetune_checkpoint_path", type=str)
+    parser.add_argument("--attn_mlp_checkpoint_path", type=str, default=None)
+    parser.add_argument("--finetune_checkpoint_path", type=str, default=None)
     parser.add_argument("--config_dir", type=str, default='configs')
     parser.add_argument("--seed", type=int, default=42)
 
@@ -44,7 +47,7 @@ def get_args():
     parser.add_argument("--num_generations", type=int, default=1)
     parser.add_argument("--top_k", type=int, default=1.0)
     parser.add_argument("--top_p", type=float, default=1.0)
-    parser.add_argument("--max_new_tokens", type=int, default=50) 
+    parser.add_argument("--max_new_tokens", type=int, default=2) 
 
     # Miscellaneous
     parser.add_argument("--benchmark", action='store_true', default=False)
@@ -191,10 +194,16 @@ def setup_fsdp_config(config, args, checkpoint_name: str = 'finetune'):
 
 def load_hf_weights(model, distill_repo_id, ft_repo_id, filename="model.pt"):
     for repo_id in [distill_repo_id, ft_repo_id]:
+        if repo_id is None: continue 
+
         print(f"Loading weights from {repo_id}")
 
         local_file_path = hf_hub_download(repo_id=repo_id, filename=filename)    
-        state_dict = torch.load(local_file_path)['model_state_dict']
+        state_dict = torch.load(local_file_path)
+        if 'model_state_dict' in state_dict: 
+            state_dict = state_dict['model_state_dict']
+        else:
+            pass
         _keys = model.load_state_dict(state_dict, strict=False)
         if len(_keys.unexpected_keys) > 0:
             new_state_dict = {k.replace('model.', 'model.model.'): v for k, v in state_dict.items()}
@@ -208,7 +217,7 @@ def load_hf_weights(model, distill_repo_id, ft_repo_id, filename="model.pt"):
             print_header('*** All expected keys matched successfully ***')
         except Exception as e:
             print(e)
-            print_header('*** Error: unexpected keys in checkpoint ***')
+            print_header('*** Error: unexpected keys in checkpoint - please fix ***')
             print('Unexpected keys:')
             for k in _keys.unexpected_keys:
                 print(k)
@@ -217,11 +226,11 @@ def load_hf_weights(model, distill_repo_id, ft_repo_id, filename="model.pt"):
     return model
 
 
-def load_model_from_checkpoint(attn_mlp_checkpoint_path: str, 
-                               finetune_checkpoint_path: str, 
-                               model_config_path: str,
-                               distill_config_path: str,
-                               finetune_config_path: str,
+def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None, 
+                               finetune_checkpoint_path: str = None, 
+                               model_config_path: str = None,
+                               distill_config_path: str = None,
+                               finetune_config_path: str = None,
                                config_dir: str = 'configs',
                                print_model: bool = False, 
                                debug: bool = False,
@@ -315,8 +324,8 @@ def main():
             model_output = model.generate(**model_input, use_cache=True, 
                                           max_new_tokens=args.max_new_tokens, 
                                           do_sample=False,
-                                        #   top_k=args.top_k,
-                                        #   top_p=args.top_p,
+                                          top_k=args.top_k,
+                                          top_p=args.top_p,
                                           num_return_sequences=1,
                                           pad_token_id=tokenizer.eos_token_id,
                                           streamer=streamer)

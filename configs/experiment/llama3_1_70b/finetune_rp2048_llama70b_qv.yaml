@@ -17,11 +17,10 @@ dataset:
     load_from_cache_file: true
     esl_model_config: llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01
     filter_by_esl: true
-    dataloaders_dir: '/home/rahul/code/clean/lolcats/src/dataloaders/'
-     
+    dataloaders_dir: '/home/simarora/code/lolcats/src/dataloaders/'
   pretrained_model_config:
-    pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-70B/"
-    cache_dir: null
+    pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
+    cache_dir: "/data/data_persistent2/sim_data/llama-3_1-70b/" # TODO: Set this to where you want to save the Meta HF checkpoint weights
   preprocess_config: null
 
 dataloader:

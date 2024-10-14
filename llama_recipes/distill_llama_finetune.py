@@ -204,19 +204,6 @@ def main():
                             # "please install latest nightly.")
         model = model_loader.load(args.attention_type)
         model.state_chunk_len = model_config['attention']['state_chunk_len']
-        # if rank == 0:
-        #     model = model_loader.load(args.attention_type)
-        #     model.state_chunk_len = model_config['attention']['state_chunk_len']
-        #     # For finetuning, if weights are saved to single .pt file we should load here
-        #     # -> otherwise for sharded state_dicts we load after FSDP wrapping
-        # else:
-        #     pretrained_config = ModelConfig.from_pretrained(**model_loader.loading_kwargs)
-        #     pretrained_config.use_cache = use_cache
-        #     if getattr(pretrained_config, 'rope_scaling', None) is not None:
-        #         # kinda backwards, but see https://github.com/huggingface/transformers/blob/868d36d29ec132deeaaf8571b25b6a1b911d0145/src/transformers/models/llama/modeling_llama.py#L110
-        #         pretrained_config.rope_scaling['type'] = pretrained_config.rope_scaling['rope_type']
-        #     with torch.device("meta"):
-        #         model = ModelClass(pretrained_config)
     else:
         model = model_loader.load(args.attention_type)
         model.state_chunk_len = model_config['attention']['state_chunk_len']
@@ -227,11 +214,6 @@ def main():
     model_config.model_name = model_config.model.pretrained_model_name_or_path
     print_model_size(model, model_config, rank if args.enable_fsdp else 0)
 
-    # Prepare the model for int8 training if quantization is enabled
-    # -> But we only use this script for FSDP without quantization
-    # if train_config.quantization:
-    #     model = prepare_model_for_int8_training(model)
-
     # Convert the model to bfloat16 if fsdp and pure_bf16 is enabled
     if args.enable_fsdp and fsdp_config.pure_bf16:
         model.to(torch.bfloat16)
@@ -239,13 +221,9 @@ def main():
     # -------------------------------
     # 3. CONVERT DISTILLED ATTENTIONS
     # -------------------------------
-    ckpt_name = None
-    # if args.load_distill_checkpoint is not None: 
-    #     ckpt_name = args.load_distill_checkpoint
-    #     print(f"Loading from {ckpt_name}")
     model, distill_peft_config = load_and_convert_attns(model, model_config,
                                                         attention_type=args.attention_type,
-                                                        checkpoint_path=ckpt_name, 
+                                                        checkpoint_path=None, 
                                                         print_model=args.verbose,
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
