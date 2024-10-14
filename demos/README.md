@@ -33,7 +33,8 @@ As a quick end-to-end compare the prefill speed of the linearized LoLCATS 8B vs.
 bash benchmark_8b.sh
 ```
 
-The code will print out the inference tokens per second per method. 
+The code will print out the inference tokens per second per method. *Note*: our benchmarking implementation is currently restricted to prefill lengths that are multiples of 64.
+
 
 ### 5-shot MMLU Eval
 

@@ -19,10 +19,6 @@ from src.utils.logging import print_header
 from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
 
-from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
-    load_sharded_model_single_gpu,
-)
-
 try:
     from huggingface_hub import hf_hub_download
 except ImportError:
