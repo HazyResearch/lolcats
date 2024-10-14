@@ -14,7 +14,7 @@ Please see the main branch README for setup and installation instructions. Follo
 
 This section provides sample scripts with commands to train your own models. As a brief overview, the commands have a (1) *distill-stage config* and (2) *finetune-stage config* to specify the optimizer scheduler and data for the attention transfer and LoRA fine-tune stages respectively. The commands also have a (3) model config to specify the architecture. 
 
-#### Linearizing Llama 8B
+### Linearizing Llama 8B
 
 We provide a scripts to linearize Llama 3.1 8B, and this can be completed using a single 80GB H100 GPU, within <1 day. Note that the main branch of this repo focuses on 8B parameter models and uses the same structure.
 
@@ -23,7 +23,7 @@ We provide a scripts to linearize Llama 3.1 8B, and this can be completed using 
 *Scripts*: Find the scripts and discussion at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_8b).
 
 
-#### Linearizing Llama 70B
+### Linearizing Llama 70B
 
 We provide a scripts to linearize Llama 3.1 70B, and this can be completed on a single 8x80GB H100 GPU node, within <1 day.
 
@@ -36,7 +36,7 @@ By passing in the same configurations files and arguments to both scripts, `dist
 *Scripts*: We provide example scripts for launching the end-to-end LoLCATS procedure for the 70B model at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_70b).
 
 
-#### Linearizing Llama 405B
+### Linearizing Llama 405B
 
 We provide a scripts to linearize Llama 3.1 405B, and this can be completed with access to three nodes of 8x80GB H100 GPUs, within a few days.
 
