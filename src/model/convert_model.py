@@ -128,7 +128,7 @@ def get_attention(attention_type: str, **kwargs: any):
 
     ## TK generation build (requires Thunderkittens)
     elif attention_type == 'lolcats_llama_window_tk_gen':
-        from .linear_attention.linear_window_attention_tk_gen import LolcatsWindowAttentionTKGen
+        from .linear_attention import LolcatsWindowAttentionTKGen
         return partial(LolcatsWindowAttentionTKGen, **kwargs)
 
     else:
@@ -144,6 +144,10 @@ def get_attention_cache(attention_type: str, past_key_values: any = None):
         return past_key_values
 
     # print(f'Returning attention cache based on attention_type == {attention_type}')
+    elif 'lolcats_llama_window_tk_gen' in attention_type:
+        from .linear_attention import LinearAttentionTKWindowGenerationCache
+        return LinearAttentionTKWindowGenerationCache()
+
     elif 'llama_window_tk' in attention_type:
         from .linear_attention import LinearAttentionTKWindowCache
         return LinearAttentionTKWindowCache()

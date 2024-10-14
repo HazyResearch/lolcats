@@ -5,11 +5,14 @@ from typing import Optional, Tuple, List
 import torch
 import torch.nn.functional as F
 
-from thunderkittens import hedgehog as tk_window_hedgehog_attention
+try:
+    from thunderkittens import hedgehog as tk_window_hedgehog_attention
+    print(f"Successfully imported ThunderKittens for TK window attention")
+except:
+    print(f"Failed to import ThunderKittens for TK window attention")
 
 from .linear_window_attention_tk_long import LolcatsTKWindowLongAttention
 from .linear_attention import LinearAttentionState
-
 
 class LolcatsWindowAttentionTKGen(LolcatsTKWindowLongAttention):
     def __init__(self, *args, window_size: int = 64, **kwargs):
@@ -18,6 +21,11 @@ class LolcatsWindowAttentionTKGen(LolcatsTKWindowLongAttention):
         self.base_inference = False 
         self.window_size = 64   # hard-coded support for TK kernel
         self.decode_window_size = 64
+        
+        b, h, l, d = 1, 32, 8192, 128
+        self.y_true   = torch.zeros(b, h, l, d, dtype=torch.bfloat16, device='cuda')
+        self.kv_state = torch.zeros(b, h, d, d, dtype=torch.float32, device='cuda')
+        self.k_state  = torch.zeros(b, h, d, dtype=torch.float32, device='cuda')
     
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -61,16 +69,16 @@ class LolcatsWindowAttentionTKGen(LolcatsTKWindowLongAttention):
                       + linear_factors * torch.einsum('bhld,bhdf->bhlf', f_q.float(), kv_state.float()))
             sum_ln = linear_factors * torch.einsum(
                 'bhld,bhnd->bhl', f_q.float(), k_state.float())[..., None]
-            y_true = (y_true / (sum_sm + sum_ln)).to(q.dtype) 
+            self.y_true = (y_true / (sum_sm + sum_ln)).to(q.dtype) 
         
         else:  # Process prefill 
             # Use TK-implemented linear + terrace window attention
             b, h, l, d = q.shape
             device = q.device
             # tk.hedgehog arguments
-            y_pred   = torch.zeros(b, h, l, d, dtype=torch.bfloat16, device=device)
-            kv_state = torch.zeros(b, h, d, d, dtype=torch.float32, device=device)
-            k_state  = torch.zeros(b, h, d, dtype=torch.float32, device=device)
+            # y_true   = torch.zeros(b, h, l, d, dtype=torch.bfloat16, device=device)
+            # kv_state = torch.zeros(b, h, d, d, dtype=torch.float32, device=device)
+            # k_state  = torch.zeros(b, h, d, dtype=torch.float32, device=device)
             betas    = F.sigmoid(self.window_factors[0, :, 0, 0].to(dtype=torch.float32))
             alphas   = (1 - betas if self.affine_attention_factors else 
                         torch.ones(betas.shape, dtype=torch.float32, device=device))
@@ -83,13 +91,15 @@ class LolcatsWindowAttentionTKGen(LolcatsTKWindowLongAttention):
             #                            f_k[:, :, :-self.window_size], 
             #                            v[:, :, :-self.window_size])  # b, h, f, d
             # 4. k_state = f_k[:, :, :-self.window_size].sum(dim=-2)   # b, h, d
+
             tk_window_hedgehog_attention(q.contiguous(), k.contiguous(), v.contiguous(), 
-                                         y_pred, k_state, kv_state, 
+                                         self.y_true, self.k_state, self.kv_state, 
                                          q_map, k_map, alphas, betas)
-            past_key_value.update_with_kv(kv_state, k_state.unsqueeze(-2), k, v, self.layer_idx)
+
+            past_key_value.update_with_kv(self.kv_state, self.k_state.unsqueeze(-2), k, v, self.layer_idx)
         
         # Concatenate heads and apply output projection
-        y_true = y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
+        y_true = self.y_true.transpose(1, 2).contiguous().view(b, l, self.hidden_size)
         y_true = self.o_proj(y_true)
         return y_true, None, past_key_value
 

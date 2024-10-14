@@ -1,7 +1,7 @@
 name: llama
 model:
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-8B"
-  cache_dir: "/scr-ssd/mzhang/models/llama-3_1-8b" # Set this to where you want to save checkpoint weights 
+  cache_dir: "/scratch/" # Set this to where you want to save checkpoint weights 
   return_dict: true
   load_in_8bit: false
   load_in_4bit: false

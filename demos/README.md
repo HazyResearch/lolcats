@@ -32,6 +32,7 @@ As a quick end-to-end compare the prefill speed of the linearized LoLCATS 8B vs.
 ```bash
 bash benchmark_8b.sh
 ```
+Our benchmarking implementation is currently restricted to prefill lengths that are multiples of 64.
 
 The code will print out the inference tokens per second per method. 
 

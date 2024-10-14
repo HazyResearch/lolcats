@@ -8,7 +8,7 @@ dataset:
     cache_dir: 'data/alpaca'  # Change this to where you want to save
   pretrained_model_config:  # will be updated based on model_config
     pretrained_model_name_or_path: 'meta-llama/Meta-Llama-3-8B'  
-    cache_dir: '/scr-ssd/mzhang/models/llama3'
+    cache_dir: '/scratch/'
   preprocess_config: null
 
 dataloader:
