@@ -1,0 +1,3 @@
+[submodule "demos/vllm_integration/vllm"]
+	path = demos/vllm_integration/vllm
+	url = git@github.com:HazyResearch/vllm.git

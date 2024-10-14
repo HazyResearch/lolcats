@@ -5,14 +5,25 @@
 <img src="assets/hedgehog_llamas_big.png" align='center' width=35% height=35%>
 </p>
 
-This readme describes how to obtain scaled up, 70B and 405B parameter, linear attention LLMs! 
-
-Please see the main branch README for setup and installation instructions. Follow these instructions to install the RedPajama data to your local machine: [Long LLM Repo](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data)
-
+This readme describes how we linearize the full Llama 3.1 model family -- 8B, 70B and 405B -- for the first time! 
 
 ## Overview: Linearizing the Llama 3.1 family.
 
-This section provides sample scripts with commands to train your own models. As a brief overview, the commands have a (1) *distill-stage config* and (2) *finetune-stage config* to specify the optimizer scheduler and data for the attention transfer and LoRA fine-tune stages respectively. The commands also have a (3) model config to specify the architecture. 
+This section provides sample scripts with commands to train your own models. As a brief overview, the commands have a (1) *distill-stage config* and (2) *finetune-stage config* to specify the optimizer scheduler and data for the attention transfer and LoRA fine-tune stages respectively. The commands also have a (3) model config to specify the architecture. In each config and script that you use, be sure to check for any paths that need to be updated with respect to your setup.
+
+### Setup 
+
+Please see the main branch README for environment setup instructions. Additionally:
+
+*Data*: We explored two main datasets -- [Alpaca](https://huggingface.co/datasets/yahma/alpaca-cleaned) and [RedPajama](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data) -- in our paper and provide sample scripts for training with these in this repo. Both datasets are relatively small so we don't need to worry too much about space. Alpaca data will automatically download from HuggingFace. Follow these instructions to download the RedPajama data: [Long LLM Repo](https://github.com/FlagOpen/FlagEmbedding/tree/master/Long_LLM/longllm_qlora#data), also provided below:
+```
+# feel free to alternate /data to your prefered location
+wget https://huggingface.co/datasets/namespace-Pt/projects/resolve/main/long-llm.tar.gz?download=true -O /data/long-llm.tar.gz
+cd /data
+tar -xzvf long-llm.tar.gz
+```
+
+*Models*: Please download [Meta Llama models](https://huggingface.co/meta-llama) to your local machine in 16-bit precision. 
 
 ### Linearizing Llama 8B
 
@@ -57,7 +68,7 @@ The core files for trenchcoat training are located at [lolcats/llama_recipes/tre
 5. [save_fsdp_to_pt.py](https://github.com/HazyResearch/lolcats/blob/lolcats-scaled/llama_recipes/trenchcoat_lolcat/save_fsdp_to_pt.py): take all the sharded files from the LoRA stage FSDP and put them in a single .pt file for convenience. This takes a couple of seconds.
 
 
-*Scripts* We provide sample scripts and details for the block-by-block approach (approach 2) at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/data=rp_len=1024_trenchcoat/) We also discuss and point to sample scripts for some of the baseline approaches to block-wise 405B at that README.
+*Scripts* We provide sample scripts and details for the block-by-block approach (approach 2) at: [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/scripts/llama3_1_405b/) We also discuss and point to sample scripts for some of the baseline approaches to block-wise 405B at that README.
 
 **IMPORTANT: Additional Setup Note**: To use the cria-by-cria distillation approach: we need to set "self.register_buffer("inv_freq", inv_freq, persistent=True) in the [Transformers modeling_llama.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py) file, when you install.
 ```
@@ -68,7 +79,7 @@ self.original_inv_freq = self.inv_freq
 
 ## Quick demos and inference
 
-We provide details at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/inference).
+We provide details at [this README.md](https://github.com/HazyResearch/lolcats/tree/lolcats-scaled/demos/).
 
 
 Feel free to reach out if you have questions!

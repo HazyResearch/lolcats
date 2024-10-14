@@ -114,15 +114,6 @@ def main():
     model_config = OmegaConf.load(model_config_path)
     model_config = update_model_config_from_args(model_config, args)
 
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except:
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
- 
 
     # Get data directory for layer-wise input tensors
     dataset_name = distill_config.dataset.name
@@ -222,25 +213,13 @@ def main():
     with torch.no_grad():
         pretrained_fname = model_config['model']['pretrained_model_name_or_path'].replace('/', '_')
         pretrained_fname = join(checkpoint_dir, pretrained_fname) + f'-{name_suffix}.pt'
-        
-        # custom adjustments
-        pretrained_fname = pretrained_fname.replace("_data_ephemeral_rahul_models_Meta-Llama-3.1-405B", "_scratch_rahul_models_Meta-Llama-3.1-405B")
-        pretrained_fname = pretrained_fname.replace("distill_llama405b_lk_smd_wtk64_fd64_w01_mem_save", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
-        pretrained_fname = pretrained_fname.replace("distill_llama3_1_405b_lk_smd_wtk64_fd256_w01", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
-        pretrained_fname = pretrained_fname.replace("distill_llama3_1_405b_lk_smd_wtk64_fd128_w01", "distill_llama3_1_405b_lk_smd_wtk64_fd64_w01")
 
-        # breakpoint()
         ckpt = torch.load(pretrained_fname, map_location='cpu')
         print(ckpt.keys())
         teacher_mini_llama.load_state_dict(ckpt, assign=True)
         print_header('All teacher weights loaded successfully')
     for p in teacher_mini_llama.parameters():   # Freeze all layers
         p.requires_grad = False
-
-    # args.run_name='dl-d=llama3_1_70b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/rp_contig_finetune_llama_70b_qv_hparams_2048-s=0-se=0-re=0-in=40-out=44'    
-
-    # Saved to: /data/simran//sharded_layers_70b_interval5/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/_data_rahul_models_Meta-Llama-3.1-70B_-in=40-out=44.pt!
-    # '/data/simran/sharded_layers_405b_interval5/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/_data_rahul_models_Meta-Llama-3.1-70B_-in=40-out=44.pt'
 
     student_mini_llama = copy.deepcopy(teacher_mini_llama)
     student_mini_llama = load_and_convert_attns(student_mini_llama, model_config,
@@ -329,114 +308,21 @@ def main():
             student_mini_llama.load_state_dict(
                 torch.load(args.load_distill_checkpoint)['model_state_dict'], strict=False,)
 
-
-    # Prepare for 2nd stage finetune
-    # mini_llama = toggle_attention(mini_llama, train=False)  # keep this
-    student_mini_llama = remove_base_attention(student_mini_llama)
-
-    # No xent calcs in the second stage for mem savings.
-    def toggle_mem_save(model, mem_save: bool = False):
-        for layer in traverse_layers(model):
-            layer.self_attn.mem_save = mem_save
-        return model
-    toggle_mem_save(student_mini_llama, mem_save=True)
-
-    # --------------------------
-    # Stage 2: Low-rank Adapting
-    # --------------------------
+    # # No xent calcs in the second stage for mem savings.
+    # def toggle_mem_save(model, mem_save: bool = False):
+    #     for layer in traverse_layers(model):
+    #         layer.self_attn.mem_save = mem_save
+    #     return model
+    # toggle_mem_save(student_mini_llama, mem_save=True)
 
     # Reset the wandb
     wandb.finish() # End the first run
-
-    # WandB logging
-    args.run_name = f"ft-{args.run_name}"
-    print(f"\n\n", "***"*10, f"\n{args.run_name}\n", "***"*10, "\n")
-    wandb = init_wandb(args)
-    if wandb is not None:
-        distill_config['model'] = model_config  # Combine for logging
-        _flattened = {'model': model_config,
-                      'model_config': args.model_config,  # config file names
-                      'distill_config': args.distill_config,
-                      'finetune_config': args.finetune_config,
-                      'distill_checkpoint': args.load_distill_checkpoint,
-                      'finetune_checkpoint': args.load_finetune_checkpoint,
-                      'replicate': args.replicate}
-        flatten_config(OmegaConf.to_container(distill_config), _flattened, '')
-        wandb.config.update(_flattened)
-
-
-    if args.max_finetune_steps is not None:
-        args.max_steps = args.max_finetune_steps
-
-    finetune_config, args = prepare_finetune_configs(args, model_config, args.finetune_config)
-    try:
-        train_loader = dataloaders['train']
-        eval_loader  = dataloaders['validation']
-    except:
-        dataloaders = load_data(data_dir, args.layer_idx, max_layer=num_hidden_layers, 
-                                **distill_config.dataloader)
-        train_loader = dataloaders['train']
-        eval_loader  = dataloaders['validation']
-    
-    checkpoint_path = args.load_finetune_checkpoint
-    print(f"Passing to `load_and_convert_finetune': {checkpoint_path=}")
-    student_mini_llama, ft_peft_config = load_and_convert_finetune(
-                                                           student_mini_llama, finetune_config, 
-                                                           checkpoint_path=checkpoint_path,  # could be None
-                                                           print_model=False,  # args.verbose,
-                                                           merge_loras=False,
-                                                           peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
-                                                        #    add_self_attn_prefix=False,
-                                                           )
-    # Initialize optimizer and scheduler
-    optimizer = get_optimizer(model=student_mini_llama, **finetune_config.optimizer)
-    scheduler = get_scheduler(optimizer=optimizer, **finetune_config.lr_scheduler)
-
-    if args.verbose:
-        print_header(f'*** Finetuning Layers {args.layer_idx} - {args.layer_idx + args.layers_per_model - 1} ***')
-        print(student_mini_llama)
-        print_header('*** Trainable Parameters ***')
-        count = 0
-        for n, p in student_mini_llama.named_parameters():
-            if p.requires_grad:
-                print(f'├── {n} (requires_grad = {p.requires_grad}, dtype = {p.dtype})')
-                count += 1
-        if count == 0:  # no trainable parameters
-            print('(none)')
-    
-    OurTrainer = get_trainer(finetune_config.trainer.name)
-    finetune_trainer = OurTrainer(model=student_mini_llama, 
-                                  layer_idx=args.layer_idx,
-                                  args=args,
-                                  train_loader=train_loader,
-                                  eval_loader=eval_loader,
-                                  optimizer_and_scheduler=(optimizer, scheduler),
-                                  device=args.device,
-                                  wandb=wandb,
-                                  checkpoint_suffix='_ft',
-                                  save_results=False,
-                                  **finetune_config.trainer)
-    if args.verbose:
-        print_header('Finetune config')
-        print_config(finetune_config)
-    print_header('*** Finetuning ***')
-    print(f'├── Experiment name: {args.run_name}')
-    print(f'├── Device: {args.device}')
-    print(f'├── Seed: {args.seed}')
-    mini_llama = finetune_trainer.train()
-    args.load_finetune_checkpoint = finetune_trainer.best_val_checkpoint_path
-
-    if ft_peft_config is not None and wandb is not None:
-        if not isinstance(ft_peft_config, dict):
-            ft_peft_config = ft_peft_config.to_dict()
-        _flattened['peft_ft'] = ft_peft_config
-        wandb.config.update(_flattened, allow_val_change=True)  # saved here
-
     print_header('*** Done training ***')
     print('--> Saved Checkpoints:')
     print(f'--attn_mlp_checkpoint_path {args.load_distill_checkpoint} \\')
-    print(f'--finetune_checkpoint_path {args.load_finetune_checkpoint} \\')
 
 if __name__ == '__main__':
     main()
     print("Thanks for washing my dishes")
+
+    

@@ -1,7 +1,7 @@
 name: llama
 model:
-  pretrained_model_name_or_path: "/data/rahul/models/Meta-Llama-3.1-70B/"
-  cache_dir: "/data/rahul/models/Meta-Llama-3.1-70B/" # Set this to where you want to save checkpoint weights
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
+  cache_dir: "/data/data_persistent2/sim_data/llama-3_1-70b/" # TODO: Set this to where you want to save the Meta HF checkpoint weights
   return_dict: true
   load_in_8bit: false
   load_in_4bit: false

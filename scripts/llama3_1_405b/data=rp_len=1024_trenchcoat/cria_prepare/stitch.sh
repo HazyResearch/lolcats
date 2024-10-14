@@ -37,10 +37,15 @@ srun  torchrun --nnodes 3 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_bac
     --verbose --replicate 0 --seed 0 \
     --layers_per_model 9 --layer_idx 0 \
     --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing \
-    --load_finetune_checkpoint /path/to/your/sharded/finetuned/checkpoints/
+    --load_finetune_checkpoint /path/to/your/sharded/finetuned/checkpoints/ # TODO: Fill in!
 
-# Sample load_finetune_checkpoint:  
+# Sample of the entry at load_finetune_checkpoint: 
 # /home/simran/code/clean/lolcats/checkpoints/llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01/sharded_layers/finetune-dl-d=llama3_1_70b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2-m=llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01-f=llama3_1_70b/rp_contig_finetune_llama_70b_qv_hparams_2048-s=0-se=0-re=0-se=0-re=0 
+#
+# This directory will contain files looking like: __0_0.distcp  __1_0.distcp  __2_0.distcp  __3_0.distcp  __4_0.distcp  __5_0.distcp  __6_0.distcp  __7_0.distcp ... 
+# 
+
+# Use the ckpt: You can then take your .pt file and run the 405b demo script in demos/llm_mmlu_eval/ etc!
 
 
 

@@ -41,9 +41,10 @@ from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
 import argparse
 
-doing_base_model = True
-
-TAG = "1012_new_model"
+try:
+    from huggingface_hub import hf_hub_download
+except ImportError:
+    print("Please pip install huggingface-hub")
 
 
 def get_args():
@@ -106,6 +107,9 @@ def get_args():
     # Evaluation
     parser.add_argument("--no_init_eval", action='store_true', default=False)
     parser.add_argument("--eval_steps", type=int, default=None)
+
+    # Experimental tag for saving mmlu preds
+    parser.add_argument("--experiment_tag", type=str, default=None)
 
     # Miscellaneous
     parser.add_argument("--huggingface_token", type=str, default=None)
@@ -189,11 +193,16 @@ class InputDataset(Dataset):
 
 
 def evaluate_lm(model, train_config, eval_dataloader,
-                local_rank, rank: int = 0):
-    for n, p in model.named_parameters():
-        if ('layers.0.' in n and 'base_attn' not in n and 
-            '.0.mlp.' not in n and '.block_sparse_moe' not in n):
-            print(f'-> {n}:\n', p)
+                local_rank, rank: int = 0, TAG=None):
+
+    if TAG is None:
+        print(f"TAG is None, Will not save the predictions out.")
+
+    if rank == 0:
+        for n, p in model.named_parameters():
+            if ('layers.0.' in n and 'base_attn' not in n and 
+                '.0.mlp.' not in n and '.block_sparse_moe' not in n):
+                print(f'-> {n}:\n', p)
 
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"])
@@ -251,22 +260,57 @@ def evaluate_lm(model, train_config, eval_dataloader,
         if step % 100 == 0 and rank == 0:
             total_correct = sum(correctness.values())
             print(f"--> at step {step}, Total Correct: {total_correct}/{len(correctness)}")
-            with open(f"{TAG}_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
-                pickle.dump(correctness, f)
-            with open(f"{TAG}_{step}_mmlu_skipped_{rank}.pkl", 'wb') as f:
-                pickle.dump(skipped, f)
+            if TAG is not None:
+                with open(f"{TAG}_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+                    pickle.dump(correctness, f)
+                with open(f"{TAG}_{step}_mmlu_skipped_{rank}.pkl", 'wb') as f:
+                    pickle.dump(skipped, f)
 
     if rank == 0:
         total_correct = sum(correctness.values())
         print(f"--> at step {step}, Total Correct: {total_correct}/{len(correctness)}")
-        with open(f"{TAG}_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
-            pickle.dump(correctness, f) 
-        with open(f"{TAG}_{step}_mmlu_skipped_{rank}.pkl", 'wb') as f:
-            pickle.dump(skipped, f)
+        if TAG is not None:
+            with open(f"{TAG}_{step}_mmlu_predictions_{rank}.pkl", 'wb') as f:
+                pickle.dump(correctness, f) 
+            with open(f"{TAG}_{step}_mmlu_skipped_{rank}.pkl", 'wb') as f:
+                pickle.dump(skipped, f)
 
     del log_probabilities; del batch
     clear_gpu_cache()
+
+    total_correct = sum(correctness.values())
+    mmlu_score = total_correct / len(correctness)
     return mmlu_score
+
+
+def load_hf_weights(model, distill_repo_id, ft_repo_id, filename="model.pt"):
+    for repo_id in [distill_repo_id, ft_repo_id]:
+        if repo_id is None: continue 
+        print(f"Loading weights from {repo_id}")
+        local_file_path = hf_hub_download(repo_id=repo_id, filename=filename)    
+        state_dict = torch.load(local_file_path)
+        if 'model_state_dict' in state_dict: 
+            state_dict = state_dict['model_state_dict']
+        else:
+            pass
+        _keys = model.load_state_dict(state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'base_model.model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+        try:
+            assert len(_keys.unexpected_keys) == 0
+            print_header('*** All expected keys matched successfully ***')
+        except Exception as e:
+            print(e)
+            print_header('*** Error: unexpected keys in checkpoint - please fix ***')
+            print('Unexpected keys:')
+            for k in _keys.unexpected_keys:
+                print(k)
+            exit()
+    return model
 
 
 def main():
@@ -296,9 +340,6 @@ def main():
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
 
     # Update dataset pretrained model config
-    print(f"{distill_config.dataset.pretrained_model_config=}")
-    print("*****"*10)
-    print(f"{model_config.model=}")
     for k in distill_config.dataset.pretrained_model_config:
         print(f"{k=}")
         distill_config.dataset.pretrained_model_config[k] = getattr(model_config.model, k)
@@ -321,6 +362,11 @@ def main():
         local_rank = int(os.environ["LOCAL_RANK"])
         rank = int(os.environ["RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
+
+    if rank == 0:
+        print(f"{distill_config.dataset.pretrained_model_config=}")
+        print("*****"*10)
+        print(f"{model_config.model=}")
 
     if rank == 0 or not args.enable_fsdp:
         print_header('Distillation Config')
@@ -366,7 +412,8 @@ def main():
             model_type = 'softmax' 
         else:
             model_type = 'llama'
-    print(f"{model_type=}")
+    if rank == 0:
+        print(f"{model_type=}")
 
     # Convert model
     if finetune_checkpoint_path is not None: 
@@ -391,7 +438,7 @@ def main():
     if finetune_checkpoint_path is not None:
         model, distill_peft_config = load_and_convert_attns(model, model_config,
                                                         attention_type=args.attention_type,
-                                                        checkpoint_path=None,  # args.load_distill_checkpoint, 
+                                                        checkpoint_path=None, 
                                                         print_model=args.verbose,
                                                         merge_loras=False,
                                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
@@ -400,14 +447,14 @@ def main():
     else: 
         distill_peft_config = None 
 
-    print(model)
+    if rank == 0:
+        print(model)
     if rank == 0:
         print_header('** Sanity check model weights **')
         for n, p in model.named_parameters():
             if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 print(f'-> {n}:\n', p)
     
-    print(model)
     if wandb_run and distill_peft_config is not None:
         wandb_run.config.update(distill_peft_config)
         
@@ -419,25 +466,32 @@ def main():
     if args.finetune_lr is not None:
         finetune_config.model_name += f'=flr={args.finetune_lr}'
             
-    print(f"{args.load_finetune_checkpoint=}")
+    if rank == 0:
+        print(f"{args.load_finetune_checkpoint=}")
     if finetune_checkpoint_path is not None:
         model, _ = load_and_convert_finetune(model, finetune_config,
-                                        #  checkpoint_path=args.load_finetune_checkpoint,
-                                         print_model=args.verbose,
-                                         merge_loras=False,
-                                         peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
-                                         rank=rank)
+                                            #  checkpoint_path=args.load_finetune_checkpoint,
+                                            print_model=args.verbose,
+                                            merge_loras=False,
+                                            peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
+                                            rank=rank)
 
+    # Load in our trained weights, assumes path has weights from both attention transfer and LoRA
     if finetune_checkpoint_path is not None:
         if '.pt' in args.finetune_checkpoint_path:
             with torch.no_grad():
                 _keys = model.load_state_dict(torch.load(args.finetune_checkpoint_path), strict=False)
-                print(f"Found {len(_keys.unexpected_keys)} unexpected keys.")
+                if rank == 0:
+                    print(f"Found {len(_keys.unexpected_keys)} unexpected keys.")
+        elif 'hazyresearch' in args.finetune_checkpoint_path:
+            print(f"Loading from huggingface.")
+            model = load_hf_weights(model, args.finetune_checkpoint_path, None, filename="model.pt")
         else:
             model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  
                                                     cfg=finetune_config, rank=rank)
 
-    print(f"{args.enable_fsdp=}")
+    if rank == 0:
+        print(f"{args.enable_fsdp=}")
     if rank == 0 or not args.enable_fsdp:  # debugging
         print_header('** Sanity check model weights **')
         for n, p in model.named_parameters():
@@ -460,12 +514,12 @@ def main():
             device_id = torch.cuda.current_device()
             print('-> device_id:', device_id)
             print(f"Model")
-            print(model)
+            if rank == 0:
+                print(model)
 
         model = FSDP(
             model,
             auto_wrap_policy=my_auto_wrapping_policy, 
-            wrapping_policy,
             cpu_offload=CPUOffload(offload_params=True) if fsdp_config.fsdp_cpu_offload else None,
             mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
             sharding_strategy=fsdp_config.sharding_strategy,
@@ -497,23 +551,29 @@ def main():
             if p.requires_grad:
                 print(f'├── {n} (dtype = {p.dtype})')
 
-    print(f"Getting the MMLU dataset:")
-    if not os.path.exists("lolcats/demos/llm_mmlu_eval/mmlu.pkl"):
+    if rank == 0:
+        print(f"Getting the MMLU dataset:")
+    if not os.path.exists("demos/llm_mmlu_eval/mmlu.pkl"):
         print(f"Please make sure the paths are set corretly for mmlu.pkl")
-    with open("lolcats/demos/llm_mmlu_eval/mmlu.pkl", 'rb') as f:
+    with open("demos/llm_mmlu_eval/mmlu.pkl", 'rb') as f:
         data = pickle.load(f)
     dataset = InputDataset(data)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=4)
     if not args.enable_fsdp or rank == 0:
         print(f"--> Validation Set Length = {len(dataloader.dataset)}")
     
-    print(f"Running evaluation:")
+    if rank == 0:
+        print(f"Running evaluation:")
+
+    TAG = args.experiment_tag
     mmlu_score = evaluate_lm(model, finetune_config, 
         dataloader,
         local_rank if args.enable_fsdp else None, 
-        rank = rank if args.enable_fsdp else None
+        rank = rank if args.enable_fsdp else None,
+        TAG=TAG
     )
-    print(f"--> Final MMLU Score: {mmlu_score}")
+    if rank == 0:
+        print(f"--> Final MMLU Score: {mmlu_score}")
 
 if __name__ == "__main__":
     main()
