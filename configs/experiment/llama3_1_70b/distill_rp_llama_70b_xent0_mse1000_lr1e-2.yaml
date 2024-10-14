@@ -14,7 +14,7 @@ dataset:
     cache_dir: "data/rp"
   pretrained_model_config:
     pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b/" # Set this to where you want to save checkpoint weights
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b/" # TODO: Set this to where you want to save the Meta HF checkpoint weights
   preprocess_config: null
 
 dataloader:
@@ -24,10 +24,9 @@ dataloader:
   pin_memory: true
 
 optimizer:
-  optim: adamw_torch # adamw
+  optim: adamw_torch 
   lr: 0.01
   max_optimizer_steps: 2500 # grad accum 8 x seq len 1024 x max steps 2500 = ~20M tokens 
-  # weight_decay: 0.0
 
 lr_scheduler:
   lr_scheduler_type: reduce_lr_on_plateau
@@ -54,7 +53,7 @@ trainer: # HuggingFace Trainer-like arguments
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 160 # round number for batch size grad accums
+  eval_steps: 100 # round number for batch size grad accums
   max_eval_batches: null
 
 fsdp:
@@ -62,5 +61,5 @@ fsdp:
   run_validation: true
   use_fp16: false
   save_optimizer: false
-  gradient_clipping: true  # false
+  gradient_clipping: true  
   gradient_clipping_threshold: 1.0

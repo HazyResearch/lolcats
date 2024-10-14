@@ -1,14 +1,20 @@
 dataset:
-  name: alpaca_clean
+  name: redpajama_sample
   dataset_config:
-    name: default
-    path: yahma/alpaca-cleaned
-    chunk_size: 1024 # 2048
-    concat_data: true
-    cache_dir: "data/"
+    train_data: 
+    - redpajama/train.json[50000]
+    eval_data:
+    - redpajama/train.json # [5000]
+    max_eval_num: 1000
+    max_length: 32768
+    min_length: 1024
+    chat_template: llama-3
+    chunk_size: 1024  # sequence length for distilling
+    seed: 42
+    cache_dir: "data/rp"
   pretrained_model_config:
     pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/data_persistent2/sim_data/llama-3_1-8b" # Set this to where you want to save checkpoint weights
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b" # TODO: Set this to where you want to save the Meta HF checkpoint weights
   preprocess_config: null
 
 dataloader:
@@ -18,9 +24,9 @@ dataloader:
   pin_memory: true
 
 optimizer:
-  optim: adamw_torch # adamw
-  lr: 0.01
-  # weight_decay: 0.0
+  optim: adamw_torch_fused
+  lr: 1e-4
+  weight_decay: 0.0
 
 lr_scheduler:
   lr_scheduler_type: reduce_lr_on_plateau
@@ -30,12 +36,7 @@ lr_scheduler:
   min_lr: 0.00001
 
 trainer: # HuggingFace Trainer-like arguments
-  name: distill_attention_xent_mse
-  mse_factor: 0 #1000
-  xent_factor: 1
-  n_queries: 64
-  n_keys: null
-
+  name: default_lm
   bf16: true
   train_split: train
   val_split: validation
@@ -45,18 +46,26 @@ trainer: # HuggingFace Trainer-like arguments
   batch_size: 1
   load_best_model_at_end: true
   greater_is_better: false
-  metric_for_best_model: distill/eval/loss
+  metric_for_best_model: eval/loss # eval/rouge/geometric_mean
   logging_steps: 100
   evaluation_strategy: steps
   max_steps: -1
-  eval_steps: 80 # round number for batch size grad accums
+  eval_steps: 100
   max_eval_batches: null
+
+finetune:
+  method: lora
+  kwargs:
+    r: 8
+    lora_alpha: 16 
+    lora_dropout: 0.05
+    target_modules: ["q_proj", "v_proj"] 
 
 fsdp:
   save_model: true 
   run_validation: true
   use_fp16: false
   save_optimizer: false
-  gradient_clipping: true  # false
+  gradient_clipping: true  
   gradient_clipping_threshold: 1.0
-  
+

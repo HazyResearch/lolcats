@@ -12,10 +12,9 @@ dataset:
     chunk_size: 1024  # sequence length for distilling
     seed: 42
     cache_dir: "data/rp"
-    use_c4: true
-  pretrained_model_config:  # will be updated based on model_config
-    pretrained_model_name_or_path: 'meta-llama/Meta-Llama-3.1-8B'  
-    cache_dir: '/data_persistent2/sim_data/llama-3_1-8b/'
+  pretrained_model_config:
+    pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b/"  # TODO: Set this to where you want to save the Meta HF checkpoint weights
   preprocess_config: null
 
 dataloader:
@@ -30,18 +29,11 @@ optimizer:
   weight_decay: 0.0
 
 lr_scheduler:
-  lr_scheduler_type: reduce_lr_on_plateau
-  mode: min
-  factor: 0.1
-  patience: 10
-  min_lr: 0.00001
+  lr_scheduler_type: none
 
 trainer:  # HuggingFace Trainer-like arguments  
-  name: distill_attention_xent_mse
-  reverse_kl: false
-  mse_factor: 1000
-  xent_factor: 1
-  
+  name: null
+
   bf16: true
   train_split: train
   val_split: validation
@@ -54,6 +46,6 @@ trainer:  # HuggingFace Trainer-like arguments
   metric_for_best_model: distill/eval/loss
   logging_steps: 100
   evaluation_strategy: steps
-  max_steps: 2500 # SA Flag
-  eval_steps: 100
-  max_eval_batches: 500
+  max_steps: -1
+  eval_steps: 100 # round number for batch size grad accums
+  max_eval_batches: null

@@ -14,7 +14,7 @@ dataset:
     cache_dir: "data/rp"
   pretrained_model_config:
     pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-70B"
-    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b" # Set this to where you want to save checkpoint weights
+    cache_dir: "/data_persistent2/sim_data/llama-3_1-70b" # TODO: Set this to where you want to save the Meta HF checkpoint weights
   preprocess_config: null
 
 dataloader:
@@ -57,7 +57,7 @@ finetune:
   method: lora
   kwargs:
     r: 8
-    lora_alpha: 16 # 32
+    lora_alpha: 16 
     lora_dropout: 0 # 0.05
     target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
 
@@ -66,6 +66,6 @@ fsdp:
   run_validation: true
   use_fp16: false
   save_optimizer: false
-  gradient_clipping: true  # false
+  gradient_clipping: true  
   gradient_clipping_threshold: 1.0
 
