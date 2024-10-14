@@ -32,10 +32,10 @@ def append_nvcc_threads(nvcc_extra_args):
 arch = get_last_arch_torch()
 sm_num = arch[-2:]
 cc_flag = ['--generate-code=arch=compute_90,code=compute_90']    # for H100
-# cc_flag = ['--generate-code=arch=compute_80,code=compute_80']    # for A100
+# cc_flag = ['--generate-code=arch=compute_80,code=compute_80']  # for A100
+# cc_flag = ['--generate-code=arch=compute_89,code=compute_89']  # for RTX 6000, 4090
 # cc_flag = ['--generate-code=arch=compute_86,code=compute_86']  # for A6000, 3090
 # cc_flag = ['--generate-code=arch=compute_75,code=compute_75']
-# cc_flag = ['--generate-code=arch=compute_89,code=compute_89']  # for RTX 6000, 4090
 
 setup(
     name='causal_attention_cuda_cpp',

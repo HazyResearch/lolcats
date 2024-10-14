@@ -25,7 +25,7 @@ In this README:
 
 ### Setup dependencies
 
-Please see `environment.yaml` for dependencies. We can set them up with conda:
+Please see `environment.yaml` for dependencies and adjust PyTorch CUDA version if needed. We can set them up with conda:
 
 ```
 conda env create -f environment.yaml
@@ -48,7 +48,7 @@ For example:
 ```yaml
 pretrained_config:
   pretrained_model_name_or_path: "mistralai/Mistral-7B-v0.1"
-  cache_dir: "/scr-ssd/mzhang/models/mistral-7b-v0.1" # change this
+  cache_dir: "/models/mistral-7b-v0.1" # change this
   return_dict: true
   quantization: false
   device_map: auto
@@ -95,17 +95,15 @@ We support a faster causal linear attention with the CUDA kernel from [https://g
 }
 ```
 
-To build the kernel (`causal_dot_product`), first check that the PyTorch CUDA version (e.g., as specified in the `environment.yaml`) matches that of your system.
+To build the kernel (`causal_dot_product`), first modify the GPU setup and C++ verisons in `./csrc/setup.py` to match that of your system.
 
-Then activate the conda environment (`conda activate lolcats`), navigate to `./csrc/`, and run `python setup.py install` within `./csrc/`, i.e.,
+Then, activate the conda environment (`conda activate lolcats`), navigate to `./csrc/`, and run `python setup.py install` within `./csrc/`, i.e.,
 
 ```bash
 conda activate lolcats
 cd ./csrc/
 python setup.py install
 ```
-
-It's worth checking the arguments in `./csrc/setup.py` to match your GPU setup and C++ versions.
 
 ### ThunderKittens linear attention + sliding window kernel
 
@@ -182,7 +180,6 @@ python distill_llama.py --model_config distill_llama3_8b_lk_smd_wtk64_fd64_w01 \
 --verbose --seed 0 --replicate 0 \
 --huggingface_token hf_<insert your token here>
 ```
-
 
 #### Llama 3 8B, Hedgehog Feature Map, Standard Linear Attention
 
@@ -332,16 +329,6 @@ pip install nltk
 pip install rouge-score
 ```
 
-### Miniconda installation
-
-```bash
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm -rf ~/miniconda3/miniconda.sh
-~/miniconda3/bin/conda init bash
-```
-
 ### `causal_dot_product` kernel installation
 
 If running `python setup.py install` in `./csrc/` fails, try making sure your environment's CUDA version matches that of your system. In our case, specifying
@@ -352,7 +339,7 @@ If running `python setup.py install` in `./csrc/` fails, try making sure your en
 
 in `environment.yaml` for a system with CUDA 12.2 worked.
 
-Also consider checking that your CUDA install is accessible, e.g., by adding the following to your `.bashrc`:
+Also, consider checking that your CUDA install is accessible, e.g., by adding the following to your `.bashrc`:
 
 ```
 export CUDA_HOME=/usr/local/cuda-12.2/

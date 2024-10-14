@@ -8,28 +8,21 @@ dependencies:
   - python>=3.10
   - pip
   - pytorch
-  - pytorch-cuda=11.8 # or 12.1 depending on your supported CUDA version
+  - pytorch-cuda=12.1 # change depending on your supported CUDA version
   - transformers=4.43.1 # Llama 3.1 support (updated RoPE)
+  - peft=0.9.0
   - datasets=2.15.0
   - nltk
   - rouge-score
   - sentencepiece
-  - xopen
-  - timm=0.4.12
+  - ninja
   - numpy
   - pandas
   - einops
   - opt_einsum
-  - jupyter
-  - jupyterlab
   - matplotlib
   - omegaconf
-  - tqdm
+  - openai
   - rich
+  - tqdm
   - wandb
-  - pip:
-    # - bitsandbytes>=0.39.0
-      - peft==0.9.0
-      - shortuuid
-    # - openai  # for llm eval
-    # - flash-attn  # --no-build-isolation
