@@ -1,0 +1,15 @@
+name: llama
+model:
+  pretrained_model_name_or_path: "mistralai/Mistral-7B-v0.1"
+  cache_dir: "/scr-ssd/mzhang/models/mistral-7b-v0.1" # Set this to where you want to save checkpoint weights
+  return_dict: true
+  load_in_8bit: false
+  load_in_4bit: false
+  device_map: auto
+  low_cpu_mem_usage: true
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
+  rope_theta: 10000.0
+
+attention:
+  attention_type: softmax
