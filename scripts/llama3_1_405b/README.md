@@ -13,7 +13,7 @@ sbatch scripts/llama3_1_405b/405b_e2e_lr1e-2_n1024.sh
 ```
 
 
-2. RedPajama data, 1024 sequence length, block-wise attention transfer over layers with 8 layers per block
+2. RedPajama data, 1024 sequence length, block-wise attention transfer over 14 blocks with 9 layers per block
 First, shard Llama 3.1 405B into blocks of 9 layers each:
 ```
 bash
@@ -21,14 +21,14 @@ cd lolcats/
 sbatch scripts/llama3_1_405b/data=rp_len=1024_trenchcoat/cria_prepare/shard.sh
 ```
 
-Second, collect the hidden states after running data through each block of 5 layers and save them to disk.
+Second, collect the hidden states after running data through each block of 9 layers and save them to disk.
 ```
 bash
 cd lolcats/
 sbatch scripts/llama3_1_405b/data=rp_len=1024_trenchcoat/cria_prepare/collect_inputs.sh
 ```
 
-Third, run attention transfer on each of the 16 blocks of 5 layers (each script can run on a *single* GPU):
+Third, run attention transfer on each of the 14 blocks of 9 layers (each script can run on a *single* GPU):
 ```
 bash
 cd lolcats/
