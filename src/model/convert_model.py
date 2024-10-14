@@ -126,6 +126,11 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention import LolcatsSlidingWindowLongAttention
         return partial(LolcatsSlidingWindowLongAttention, **kwargs)
 
+    ## TK generation build (requires Thunderkittens)
+    elif attention_type == 'lolcats_llama_window_tk_gen':
+        from .linear_attention.linear_window_attention_tk_gen import LolcatsWindowAttentionTKGen
+        return partial(LolcatsWindowAttentionTKGen, **kwargs)
+
     else:
         print(f'-> attention_type {attention_type} not handled... returning None')
         return None
@@ -150,6 +155,11 @@ def get_attention_cache(attention_type: str, past_key_values: any = None):
     elif 'llama_window_sw_linear' in attention_type:
         from .linear_attention import LinearAttentionSlidingWindowCache
         return LinearAttentionSlidingWindowCache()
+
+    ## TK generation build (requires Thunderkittens)
+    elif attention_type == 'lolcats_llama_window_tk_gen':
+        from .linear_attention.linear_window_attention_tk_gen import LinearAttentionTKWindowGenerationCache
+        return LinearAttentionTKWindowGenerationCache()
 
     elif 'softmax' in attention_type:
         return past_key_values

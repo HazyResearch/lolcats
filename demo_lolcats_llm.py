@@ -17,11 +17,6 @@ from src.model.pretrained import get_pretrained_loader
 from src.model.load_model import load_and_convert_attns, load_and_convert_finetune
 
 
-from llama_recipes.model_checkpointing.distill_checkpoint_handler import (
-    load_sharded_model_single_gpu,
-)
-
-
 system_prompt = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
 ### Instruction:
@@ -275,6 +270,8 @@ def get_model_name(attn_mlp_checkpoint_path: str, finetune_checkpoint_path: str,
     model_name = '🦔 ' if attn_mlp_checkpoint_path is not None else ''
     if 'llama3_8b_' in finetune_checkpoint_path:
         model_name += f'Llama-3-8B'
+    elif 'llama3_1_8b_' in finetune_checkpoint_path:
+        model_name += f'Llama-3.1-8B'
     elif 'llama2_7b_' in finetune_checkpoint_path:
         model_name += f'Llama-2-7B'
     elif 'mistral_7b_' in finetune_checkpoint_path:
