@@ -1,3 +1,8 @@
+########################################################################
+# This script saves the hidden states after every "layers_per_model" layers to disk in various .pt files.
+# This serves as training data for the block-wise attention transfer approach described in our paper.
+########################################################################
+
 #!/bin/bash
 #SBATCH --job-name=llama-405b
 #SBATCH --account=root
@@ -7,8 +12,8 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=22
 #SBATCH --time=2000:00:00
-#SBATCH --output=/home/rahul/code/clean/slurm/slurm-%j.out   # TODO change to your folder
-#SBATCH --error=/home/rahul/code/clean/slurm/slurm-%j.err
+#SBATCH --output=/home/simran/code/clean/slurm/slurm-%j.out   # TODO change to your folder
+#SBATCH --error=/home/simran/code/clean/slurm/slurm-%j.err
 
 # Initialize HPC-X toolkit for high-performance computing
 . /opt/hpcx/hpcx-init.sh
@@ -27,15 +32,15 @@ export MASTER_HOSTNAME="mk-turbo-01"  #  TODO change to your nodenames
 export MASTER_ADDR=$(host $MASTER_HOSTNAME | awk '/has address/ { print $4 }')
 export MASTER_PORT=29500
 
-export PYTHONPATH=/home/rahul/code/clean/lolcats/   #  TODO change to your folder
+export PYTHONPATH=/home/simran/code/clean/lolcats/   #  TODO change to your folder
 
 # Save the model outputs
 srun  torchrun --nnodes 2 --node_rank $SLURM_NODEID --rdzv_id $RANDOM --rdzv_backend c10d --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT --nproc_per_node 8 llama_recipes/trenchcoat_lolcat/save_llama_attn_inputs.py \
---model_config llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
---distill_config llama3_1_70b/distill_rpcontig2048_dcs2048_xent0_mse1000_lr1e-2 \
---finetune_config llama3_1_70b/rp_contig_finetune_llama_70b_qv_hparams_2048 \
---verbose --replicate 0 --seed 0 \
---enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing  \
---layers_per_model 5 --layers_limit_max 80 --layers_limit_min 0
+    --model_config llama3_1_70b/distill_llama3_1_70b_lk_smd_wtk64_fd64_w01 \
+    --distill_config llama3_1_70b/distill_rp2048_llama_70b_xent0_mse1000_lr1e-2 \
+    --finetune_config llama3_1_70b/finetune_rp2048_llama70b_qv \
+    --verbose --replicate 0 --seed 0 \
+    --enable_fsdp --low_cpu_fsdp --fsdp_activation_checkpointing  \
+    --layers_per_model 5 --layers_limit_max 80 --layers_limit_min 0
 
 
