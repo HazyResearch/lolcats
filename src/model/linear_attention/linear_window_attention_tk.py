@@ -122,7 +122,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
         self.mem_save=mem_save
-        print(f"{self.mem_save=}")
+        # print(f"{self.mem_save=}")
         
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -395,7 +395,6 @@ class LinearAttentionTKWindowCache(LinearAttentionState):
                 self.v_cache[layer_idx] = torch.cat([v_cache, values], dim=-2)
             else:
                 k_state = feature_map_k(k_cache[:, :, :1, :])  
-                print(f"{feature_map_k.layer=}")     
                 v_state = v_cache[:, :, :1, :]
                 kv_state = torch.einsum('bhlf,bhld->bhfd', k_state.float(), v_state.float()).to(dtype) # b, h, f, d
                 self.decode_kv_states[layer_idx] += kv_state
