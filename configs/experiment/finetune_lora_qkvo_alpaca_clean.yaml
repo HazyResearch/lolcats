@@ -51,6 +51,6 @@ finetune:
   method: lora
   kwargs:
     r: 8
-    lora_alpha: 16 # 32
+    lora_alpha: 16
     lora_dropout: 0 # 0.05
     target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]

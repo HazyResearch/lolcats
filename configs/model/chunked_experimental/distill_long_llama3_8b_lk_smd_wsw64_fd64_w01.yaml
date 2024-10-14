@@ -1,3 +1,4 @@
+# Experimental config for chunked linear attention 
 name: llama
 model:
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B"
@@ -12,7 +13,8 @@ model:
   rope_theta: 500000.0
 
 attention:
-  attention_type: lolcats_llama_window_sw_linear
+  attention_type: lolcats_long_llama_window_sw
+  state_chunk_len: 1024
   window_size: 64
   affine_attention_factors: false
   init_window_factor: -2.1972245773362196

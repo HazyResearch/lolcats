@@ -1,6 +1,7 @@
+# Experimental config for chunked linear attention 
 name: llama
 model:
-  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B-Instruct"
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B"
   cache_dir: "/scr-ssd/mzhang/models/llama3" # Set this to where you want to save checkpoint weights
   return_dict: true
   load_in_8bit: false
@@ -12,8 +13,12 @@ model:
   rope_theta: 500000.0
 
 attention:
-  attention_type: lolcats_llama
-  feature_map: relu
+  attention_type: lolcats_long_llama_window_tk
+  state_chunk_len: 1024
+  window_size: 64
+  affine_attention_factors: false
+  init_window_factor: -2.1972245773362196
+  feature_map: softmax_dim
   feature_map_kwargs:
     eps: 1e-12
     # mlp: null  # to set
@@ -21,9 +26,9 @@ attention:
   layer_idx: null # to set
   learned_kernel: untied_head_einsum
   learned_kernel_kwargs:
-    feature_dim: 128
+    feature_dim: 64
     skip_connection: false
-    bias: true
+    bias: false
     zero_init: false
   tie_qk_kernels: false
   train_qk: false
