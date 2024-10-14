@@ -246,8 +246,6 @@ class LooooolcatsLlamaForCausalLM(LolcatsLlamaForCausalLM):
         Forward pass where we chunk inputs 
         """
         self.generating = False
-        # assert output_attentions is False
-        # assert use_cache is True
         if use_cache is not True:
             use_cache = True
         
@@ -274,7 +272,6 @@ class LooooolcatsLlamaForCausalLM(LolcatsLlamaForCausalLM):
                 # Determine and setup our KV cache or state
                 attention_type = getattr(self.model.layers[0].self_attn, 'attention_type', None)
                 past_key_values = get_attention_cache(attention_type)
-                # print(f'-> attention_type:', attention_type)
 
             # Split inputs into chunks, and do linear attention over each (passing the states)
             input_ids = torch.split(input_ids, self.state_chunk_len, dim=-1)
@@ -283,7 +280,6 @@ class LooooolcatsLlamaForCausalLM(LolcatsLlamaForCausalLM):
 
             all_logits = []  # save these
             for _idx, _input_ids in enumerate(input_ids):
-                # labels = copy.deepcopy(_input_ids)
                 if self.training:
                     print(f'Model processing _input_ids.shape:', _input_ids.shape)
                 outputs = super().forward(_input_ids, None, 

@@ -197,10 +197,8 @@ class FeatureMapMLP(nn.Module):
         if self.normal_init:
             with torch.no_grad():
                 nn.init.normal_(self.layer)
-            # print('normal init')
         
         if self.skip_connection:
-            # print('skip connection')
             assertion_fail = f'If self.skip_connection we need self.head_dim == self.feature_dim but self.head_dim is {self.head_dim} != self.feature_dim is {self.feature_dim}'
             assert self.head_dim == self.feature_dim, assertion_fail
 
@@ -258,6 +256,8 @@ class FeatureMapAdapter(FeatureMapMLP):
     """
     Learnable Feature map with bottleneck adapter
     as in https://arxiv.org/abs/1902.00751
+
+    We don't use but could be fun to try
     """
     def __init__(self, hidden_dim: int, *args, **kwargs):
         kwargs['skip_connection'] = True

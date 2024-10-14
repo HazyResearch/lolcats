@@ -11,7 +11,6 @@ import torch
 import numpy as np
 import pandas as pd
 
-# from lm_eval_harness.model_loader import load_model_from_checkpoint, load_model_from_config
 from src.model.load_model_for_eval import load_model_from_checkpoint, load_model_from_config
 
 LM_EVALUATION_HARNESS_PATH = '/juice2/scr2/mzhang/projects/lm-evaluation-harness'  # Change this to where you clone LM eval harness from
@@ -44,7 +43,6 @@ def get_args():
     parser.add_argument("--model_config", type=str, default=None)
     parser.add_argument("--cache_dir", type=str, default=None)
     
-    # If model_name == 'hedghog', paths to checkpoints
     parser.add_argument("--attn_mlp_checkpoint_path", type=str, default=None)
     parser.add_argument("--finetune_checkpoint_path", type=str, default=None)
     parser.add_argument("--config_dir", type=str, default='./configs')

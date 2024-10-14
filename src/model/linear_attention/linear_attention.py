@@ -338,7 +338,7 @@ class LolcatsLinearAttention(nn.Module):
             # Apply prefill mask
             if attention_mask is not None and q.shape[2] > 1:
                 if len(attention_mask.shape) == 4:
-                    lin_attn_mask = (attention_mask == 0)[:, :1, -1, :][..., None]  # b, 1, k_len, 1
+                    lin_attn_mask = (attention_mask == 0)[:, :1, -1, :l][..., None]  # b, 1, k_len, 1
                 else:
                     lin_attn_mask = attention_mask[:, None, :, None]  # b, 1, k_len, 1
                 k = k.masked_fill(~lin_attn_mask, 0)

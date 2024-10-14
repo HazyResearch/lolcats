@@ -21,7 +21,7 @@ from .utils import decode_samples
 class OurTrainer():
     """
     Basic parent trainer class. Defaults to language modeling. 
-    -> Replacement for HuggingFace Trainer
+    -> Replacement for Hugging Face Trainer
     """
     def __init__(self,
                  model: nn.Module,
@@ -49,6 +49,7 @@ class OurTrainer():
                  max_eval_batches: int = -1,
                  print_samples: bool = False,
                  initial_eval: bool = True,
+                 num_save_ckpt_steps: int = 1000,
                  **kwargs: any):
         super().__init__()
         self.model = model
@@ -88,6 +89,7 @@ class OurTrainer():
         self.max_eval_batches = max_eval_batches
         self.print_samples = print_samples
         self.initial_eval = initial_eval
+        self.num_save_ckpt_steps = num_save_ckpt_steps
 
         # Saving metrics
         self.train_metrics = {'train/loss': None, 
@@ -202,16 +204,21 @@ class OurTrainer():
 
             if self.evaluation_strategy == 'steps':
                 if (self.grad_step % self.eval_steps == 0 and self.grad_step > 0 and not eval_for_step):
-                    # self.optimizer.zero_grad()  # Clear out grads before eval
                     _eval_metrics = self.eval_step(model, step=self.grad_step)
-                    # torch.cuda.empty_cache()
                     print(f'Grad Step {self.grad_step} eval metrics:', _eval_metrics)
                     eval_for_step = True
                     model.train()  # Need to set back to train mode
+                elif self.grad_step == 0 and self.num_save_ckpt_steps < 1000 and not eval_for_step:  # hack for micros
+                    _eval_metrics = self.eval_step(model, step=self.grad_step)
+                    print(f'Grad Step {self.grad_step} eval metrics:', _eval_metrics)
+                    eval_for_step = True
+                    model.train()  # Need to set back to train mode
+                    
                 elif self.grad_step % self.eval_steps == 0 and self.grad_step > 0 and eval_for_step:
                     pass
                 else:
-                    eval_for_step = False
+                    if self.grad_step > 0:
+                        eval_for_step = False
             if self.grad_step == self.max_steps:
                 early_stopping = True
                 return model, early_stopping
@@ -253,10 +260,9 @@ class OurTrainer():
                         'step': self.grad_step, 
                         self.metric_for_best_model: val_metric
                     }, self.best_val_checkpoint_path)
-                    # model.to(self.device)
                     print(f'\n-> Saved best model checkpoint to: {self.best_val_checkpoint_path}!')
 
-            if self.grad_step % 1000 == 0:
+            if self.grad_step % self.num_save_ckpt_steps == 0:
                 save_path = self.best_val_checkpoint_path.replace('.pt', f'_{self.grad_step}.pt')
                 torch.save({
                     'model_state_dict': self.save_trainable_weights(model),
@@ -283,7 +289,6 @@ class OurTrainer():
                     desc=f'Evaluating at step {step}')
         
         model.eval()
-        # model.to(self.device)
         step_loss = 0
         step_eval_metrics = {}
         with torch.no_grad():
@@ -333,7 +338,7 @@ class OurTrainer():
         inputs = {k: v.to(model.device) 
                   for k, v in data.items() if k in input_keys}  
 
-        outputs = model(**inputs, output_attentions=False, use_cache=False)  # use_cache=False)
+        outputs = model(**inputs, output_attentions=False, use_cache=False)
         
         outputs = outputs.get('logits')[..., :-1, :].contiguous()
         targets = data.get('labels')[..., 1:].contiguous()

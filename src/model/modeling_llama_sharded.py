@@ -130,8 +130,6 @@ class ShardedLolcatsLlamaModel(LlamaModel):
             position_ids = position_ids.to(device)
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
-            # if past_key_values is not None:
-            #     past_key_values = past_key_values.to(device)
 
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)

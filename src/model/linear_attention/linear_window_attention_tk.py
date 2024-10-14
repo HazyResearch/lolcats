@@ -122,6 +122,7 @@ class LolcatsTKWindowAttention(LolcatsLinearAttention):
         # Whether we use original flash attention 2 inference (use during attention transfer)
         self.base_inference = False
         self.state_grad_enabled = state_grad_enabled
+        self.window_factor = self.window_factors  # legacy naming support
         
     def forward(self,
                 hidden_states: torch.Tensor,

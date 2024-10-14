@@ -1,5 +1,7 @@
 """
-Custom trainer class for distilling attentions. Can substitute for HuggingFace trainer.
+Custom trainer class for distilling attentions ("attention transfer"). Can substitute for Hugging Face trainer.
+
+In this implementation we support using either just the softmax attention outputs, or the softmax attention weights.
 """
 import torch
 import torch.nn as nn
@@ -23,7 +25,7 @@ class OurTrainer(DefaultTrainer):
         super().__init__(model=model, 
                          metric_for_best_model=metric_for_best_model,
                          **kwargs)
-        self.criterion_xent = nn.CrossEntropyLoss(reduction='mean')  # stability
+        self.criterion_xent = nn.CrossEntropyLoss(reduction='mean')
         self.criterion_mse = nn.MSELoss(reduction='mean')
         self.mse_factor = mse_factor
         self.xent_factor = xent_factor
@@ -39,7 +41,6 @@ class OurTrainer(DefaultTrainer):
         inputs = {k: v.to(model.device) for k, v in data.items() if k != 'labels'}
         outputs = model(**inputs, output_attentions=True, use_cache=False)
         outputs = outputs.get('attentions')
-        # inputs = {k: v.cpu() for k, v in inputs.items()}  # save gpu memory
 
         # Attentions are tuple[tuple[torch.Tensor, torch.Tensor]]
         # n_layers x (predicted_attns, true_attns)
@@ -62,10 +63,7 @@ class OurTrainer(DefaultTrainer):
                         a_pred = a_pred.contiguous().view(-1, k_len)
                         a_true = a_true.contiguous().view(-1, k_len)
                         loss_xent += self.criterion_xent(a_pred, a_true)
-                        # loss_xent += self.criterion_xent(a_pred.to(model.device), 
-                        #                                  a_true.to(model.device))
                     if self.mse_factor > 0:
-                        # attns[1] = [a.to(model.device) for a in attns[1]]
                         loss_mse += self.criterion_mse(*attns[1])
                     n_layers += 1
             else:
@@ -74,13 +72,6 @@ class OurTrainer(DefaultTrainer):
             loss_xent = loss_xent / n_layers * self.xent_factor
             loss_mse = loss_mse / n_layers * self.mse_factor
         loss = loss_xent + loss_mse
-        # try:
-        #     del a_true
-        #     del a_pred
-        # except NameError:
-        #     pass
-        # torch.cuda.empty_cache()
-        # print('softmax_layer:', softmax_layers)
         if 'position_ids' in data:
             outputs = {'loss_xent': loss_xent.item() if self.xent_factor > 0 else 0,
                        'loss_mse': loss_mse.item() if self.mse_factor > 0 else 0,

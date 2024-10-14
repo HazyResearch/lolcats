@@ -315,6 +315,12 @@ def main():
                                                               print_model=args.verbose,
                                                               merge_loras=False,
                                                               peft_gradient_checkpointing=not args.no_peft_grad_ckpt)
+            if args.verbose:
+                print_header(f'*** Trainable finetuning parameters ***')
+                for n, p in model.named_parameters():
+                    if p.requires_grad:
+                        print(f'├── {n} ({p.dtype})')
+                
             finetune_trainer = get_finetuner(model, finetune_config, args.device, args, wandb)
             if args.verbose:
                 print_header('Finetune config')
@@ -357,18 +363,19 @@ def main():
         finetune_trainer = get_evaluator(model, eval_config, args, args.device, wandb)
 
     # Final eval
-    print_header('*** Distilled + Finetuned Final Eval ***')
-    final_metrics = finetune_trainer.evaluate(model, step=-1, max_batches=None, prefix='final')  
-    print_header('*** Saved Checkpoints ***')
-    print(f'--attn_mlp_checkpoint_path {args.load_distill_checkpoint} \\')
-    print(f'--finetune_checkpoint_path {args.load_finetune_checkpoint} \\')
-    # print(f'--finetune_long_checkpoint_path {args.load_finetune_long_checkpoint} \\')
-
-    print(final_metrics)
-    for k, v in final_metrics.items():
-        print(f'├── {k}: {v:.4f}')
-    if wandb is not None:
-        wandb.log({f'final/{k}': v for k, v in final_metrics.items()})
+    if 'save10' not in args.distill_config and 'save10' not in args.finetune_config:
+        print_header('*** Distilled + Finetuned Final Eval ***')
+        final_metrics = finetune_trainer.evaluate(model, step=-1, max_batches=None, prefix='final')  
+        print_header('*** Saved Checkpoints ***')
+        print(f'--attn_mlp_checkpoint_path {args.load_distill_checkpoint} \\')
+        print(f'--finetune_checkpoint_path {args.load_finetune_checkpoint} \\')
+        # print(f'--finetune_long_checkpoint_path {args.load_finetune_long_checkpoint} \\')
+    
+        print(final_metrics)
+        for k, v in final_metrics.items():
+            print(f'├── {k}: {v:.4f}')
+        if wandb is not None:
+            wandb.log({f'final/{k}': v for k, v in final_metrics.items()})
 
 
 # ------------------

@@ -45,7 +45,7 @@ def compute_scrolls_metrics(eval_preds, scrolls_metric, tokenizer):
 
 class OurTrainer(DefaultTrainer):
     """
-    Trainer for SCROLLS benchmark
+    Evaluator for seq-to-seq / generation benchmarks
     """
     def __init__(self, model, args, # max_eval_batches: Optional[int] = 100,
                  **kwargs: any):
@@ -57,8 +57,6 @@ class OurTrainer(DefaultTrainer):
         print(f'self.print_steps:', self.print_steps)
         # ablation sweep
         self.max_eval_batches = 10
-        # if self.max_eval_batches is None:
-        #     self.max_eval_batches = 100
 
     def init_criterion_(self):
         pass
@@ -92,7 +90,6 @@ class OurTrainer(DefaultTrainer):
         predictions, references = [], []
 
         model.eval()
-        # model.to(self.device)
         
         pbar = tqdm(dataloader, leave=False, colour='green', 
                     desc=f'Evaluating at step {step}')

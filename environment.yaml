@@ -1,4 +1,4 @@
-name: lolcats
+name: lolcats-env
 channels:
   - conda-forge
   - pytorch

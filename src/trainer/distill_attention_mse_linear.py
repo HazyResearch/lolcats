@@ -1,6 +1,5 @@
 """
-Custom trainer class for distilling attentions over long sequences with 
-recurrent linear attention view. Can substitute for HuggingFace trainer.
+Custom trainer class for distilling attentions ("attention transfer") over long sequences with recurrent linear attention view. Can substitute for Hugging Face trainer.
 """
 import torch
 import torch.nn as nn

@@ -7,14 +7,12 @@ from .linear_attention import (
 from .linear_window_attention_tk import (
     LolcatsTKWindowAttention, LinearAttentionTKWindowCache
 )
-from .linear_window_attention_tk_long import (
-    LolcatsTKWindowLongAttention,
-)
-from .linear_window_attention_tk_bf16 import (
-    LolcatsTKWindowAttentionBF16,
-)
 from .linear_window_attention_sw import (
     LolcatsSlidingWindowAttention, LinearAttentionSlidingWindowCache
+)
+# Experimental chunk linear attentions
+from .linear_window_attention_tk_long import (
+    LolcatsTKWindowLongAttention,
 )
 from .linear_window_attention_sw_long import (
     LolcatsSlidingWindowLongAttention,

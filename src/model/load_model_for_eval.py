@@ -94,17 +94,10 @@ def get_lm_eval_model(model_kwargs: dict,  # model_loader.loading_kwargs
 
     print('-> Loading as lm-evaluation-harness model')
     if hedgehog_model:
-        # from lm_eval_harness.models import HedgehogLlamaForCausalLM
         if 'mistral' in lm_kwargs['pretrained']:
-            if long_model:
-                from lm_eval_harness.models import LooooolcatsMistralForCausalLM as ModelClass
-            else:
-                from lm_eval_harness.models import LolcatsMistralForCausalLM as ModelClass
+            from lm_eval_harness.models import LolcatsMistralForCausalLM as ModelClass
         else:
-            if long_model:
-                from lm_eval_harness.models import LooooolcatsLlamaForCausalLM as ModelClass
-            else:
-                from lm_eval_harness.models import LolcatsLlamaForCausalLM as ModelClass
+            from lm_eval_harness.models import LolcatsLlamaForCausalLM as ModelClass
         lm = ModelClass.create_from_arg_string('', lm_kwargs)
     else:
         sys.path.append(path_to_lm_eval_harness)
@@ -180,11 +173,6 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
     if profile_model:
         model_config['attention']['attention_type'] += '_profile'
 
-    if 'long' in model_config['attention']['attention_type']:
-        long_model = True
-    else:
-        long_model = False
-
     if finetune_checkpoint_path is not None:
         finetune_config = finetune_checkpoint_path.split('-f=')[-1].split('-')[0]
         finetune_config_path = join(config_dir, 'experiment', f'{finetune_config}.yaml')
@@ -207,15 +195,14 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
 
     if lm_eval_model and attn_mlp_checkpoint_path is not None:
         lm = get_lm_eval_model(model_loader.loading_kwargs, path_to_lm_eval_harness,
-                               hedgehog_model=True, long_model=long_model)
+                               hedgehog_model=True)
         model = lm.model  # Do this way because we call the larger object
-    elif lm_eval_model:  # Instantiate as lm_eval.base.LM object
+    elif lm_eval_model:   # Instantiate as lm_eval.base.LM object
         lm = get_lm_eval_model(model_loader.loading_kwargs, path_to_lm_eval_harness)
         model = lm.model
     elif attn_mlp_checkpoint_path is None:
         model = model_loader.load()
     else:
-        # model = model_loader.load(model_type='hedgehog_llama')
         model = model_loader.load(model_type=model_config['attention']['attention_type'])
     try:
         model.state_chunk_len = model_config['attention']['state_chunk_len']

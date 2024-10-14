@@ -109,45 +109,22 @@ def get_attention(attention_type: str, **kwargs: any):
         from .linear_attention import LolcatsTKWindowAttention
         return partial(LolcatsTKWindowAttention, **kwargs)
 
-    elif attention_type == 'lolcats_long_llama_window_tk':
-        from .linear_attention import LolcatsTKWindowLongAttention
-        return partial(LolcatsTKWindowLongAttention, **kwargs)
-    
-    elif attention_type == 'lolcats_llama_window_tk_bf16':
-        from .linear_attention import LolcatsTKWindowAttentionBF16
-        return partial(LolcatsTKWindowAttentionBF16, **kwargs)
-
-    elif attention_type == 'lolcats_llama_window_tk_fa2':
-        from .linear_attention.linear_window_attention_tk_fa2 import LolcatsTKWindowAttentionFA2
-        return partial(LolcatsTKWindowAttentionFA2, **kwargs)
-    
-    elif attention_type == 'lolcats_llama_window_tk_sdpa':
-        from .linear_attention.linear_window_attention_tk_sdpa import LolcatsTKWindowAttentionSDPA
-        return partial(LolcatsTKWindowAttentionSDPA, **kwargs)
-
     elif attention_type == 'lolcats_llama_window_sw':
         from .linear_attention import LolcatsSlidingWindowAttention
-        return partial(LolcatsSlidingWindowAttention, **kwargs)
-
-    elif attention_type == 'lolcats_long_llama_window_sw':
-        from .linear_attention import LolcatsSlidingWindowLongAttention
-        return partial(LolcatsSlidingWindowLongAttention, **kwargs)
-    
-    elif attention_type == 'lolcats_llama_window_sw_scale':
-        from .linear_attention.linear_window_attention_sw_scale import LolcatsSlidingWindowAttention
         return partial(LolcatsSlidingWindowAttention, **kwargs)
 
     elif attention_type == 'lolcats_llama_window_sw_linear':
         from .linear_attention.linear_window_attention_sw_linear import LolcatsLinearSlidingWindowAttention
         return partial(LolcatsLinearSlidingWindowAttention, **kwargs)
 
-    # elif attention_type == 'lolcats_llama_window_sw_tiled':
-    #     from .linear_attention.linear_window_attention_sw_tiled import LolcatsTiledSlidingWindowAttention
-    #     return partial(LolcatsTiledSlidingWindowAttention, **kwargs)
+    ## Experimental chunked linear attentions below
+    elif attention_type == 'lolcats_long_llama_window_tk':
+        from .linear_attention import LolcatsTKWindowLongAttention
+        return partial(LolcatsTKWindowLongAttention, **kwargs)
 
-    elif attention_type == 'supra':
-        from .linear_attention.supra_attention import SUPRALinearAttention
-        return partial(SUPRALinearAttention, **kwargs)
+    elif attention_type == 'lolcats_long_llama_window_sw':
+        from .linear_attention import LolcatsSlidingWindowLongAttention
+        return partial(LolcatsSlidingWindowLongAttention, **kwargs)
 
     else:
         print(f'-> attention_type {attention_type} not handled... returning None')
@@ -168,10 +145,6 @@ def get_attention_cache(attention_type: str, past_key_values: any = None):
 
     elif 'llama_window_sw' in attention_type:
         from .linear_attention import LinearAttentionSlidingWindowCache
-        return LinearAttentionSlidingWindowCache()
-    
-    elif 'llama_window_sw_scale' in attention_type:
-        from .linear_attention.linear_window_attention_sw_scale import LinearAttentionSlidingWindowCache
         return LinearAttentionSlidingWindowCache()
 
     elif 'llama_window_sw_linear' in attention_type:

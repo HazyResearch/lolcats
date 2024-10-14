@@ -1,5 +1,6 @@
 """
 Evaluate models with lm-evaluation-harness
+- Another way to evaluate models that require multiple GPUs to load
 - Right now does a heinous manual pipelining of model layers across devices
 """
 import copy
@@ -48,7 +49,6 @@ OPEN_LLM = [  # task, shots
     ('truthfulqa-mc', 0),
     ('winogrande', 5),
     ('gsm8k', 5),
-    # TODO: include MMLU too
 ]
 ZERO_SHOT = [
     ('hellaswag', 0),
@@ -57,7 +57,6 @@ ZERO_SHOT = [
     ('arc-easy', 0),
     ('winogrande', 0),
     ('hendrycksTest', 5),
-    # TODO: include MMLU too
 ]
 
 
@@ -125,11 +124,8 @@ def get_args():
     
     # Run_name for loading checkpoints
     args.run_name = f'dl-d={distill_name}-m={args.model_config}-f={finetune_name}'
-    # if args.no_peft_grad_ckpt is not None:
-    #     args.model_name += f'-npgc={args.no_peft_grad_ckpt}'
     if args.fsdp_activation_checkpointing is not None:
         args.run_name += f'-fac={args.fsdp_activation_checkpointing}'
-    # args.run_name += f'-s={args.seed}'
     args.run_name = args.run_name.replace('True', '1').replace('False', '0')  # concise hacks
 
     # Run name for evaluation
@@ -199,7 +195,6 @@ def get_lm_eval_lolcats_model(model_kwargs: dict, lolcats_model: bool = True):
         lm = get_model('hf-causal-experimental').create_from_arg_string(
             '', lm_kwargs,
         )
-    # model = lm.model
     return lm
 
 
@@ -228,13 +223,6 @@ def main():
     args = get_args()
     seed_everything(args.seed)
     rank = 0
-
-    # if args.attn_mlp_checkpoint_path is not None or args.finetune_checkpoint_path is not None:
-    #     args.model_config = args.attn_mlp_checkpoint_path.split('/')[-2]
-    #     if args.attn_mlp_checkpoint_path is not None:
-    #         args.distill_config = args.attn_mlp_checkpoint_path.split('-d=')[-1].split('-m=')[0]
-    #     if args.finetune_checkpoint_path is not None:
-    #         args.finetune_config = args.finetune_checkpoint_path.split('-f=')[-1].split('-')[0]
 
     args.checkpoint_dir = join(args.checkpoint_dir, args.model_config)
     if not os.path.isdir(args.checkpoint_dir):
@@ -299,8 +287,6 @@ def main():
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = 'left'
 
-    # use_cache = False if args.enable_fsdp else None
-
     # Load model weights to CPU
     lm = get_lm_eval_lolcats_model(model_loader.loading_kwargs,
                                    lolcats_model=args.model_type == 'lolcats_ckpt')
@@ -337,11 +323,6 @@ def main():
     model_config.model_name = model_config.model.pretrained_model_name_or_path
     print_model_size(model, model_config, 0)
 
-    # Prepare the model for int8 training if quantization is enabled
-    # -> But we only use this script for FSDP without quantization
-    # if train_config.quantization:
-    #     model = prepare_model_for_int8_training(model)
-
     # Convert the model to bfloat16 if fsdp and pure_bf16 is enabled
     if args.pure_bf16:
         model.to(torch.bfloat16)
@@ -352,18 +333,13 @@ def main():
         # -------------------------------
         model, distill_peft_config = load_and_convert_attns(model, model_config,
                                                             attention_type=args.attention_type,  # 'lolcats_llama',
-                                                            checkpoint_path=None,  # args.load_distill_checkpoint,
+                                                            checkpoint_path=None,
                                                             print_model=args.verbose,
                                                             merge_loras=False,
                                                             peft_gradient_checkpointing=not args.no_peft_grad_ckpt,
                                                             train_attention=False)
         if True:  # rank == 0:
-            # if distill_config.trainer.name is not None or args.attn_mlp_checkpoint_path is not None:
             if distill_config.trainer.name is not None and args.attn_mlp_checkpoint_path is not None:
-                # if args.replicate == 64:
-                #     distill_config.model_name = distill_config.model_name.replace(f'-se={args.seed}', '-se=0').replace(f'-s={args.seed}', '-s=0')
-                # else:
-                #     distill_config.model_name = distill_config.model_name.replace(f'-re={args.replicate}', '-re=0')
                 model = load_sharded_model_single_gpu(model, model_path=args.attn_mlp_checkpoint_path,  #  None,
                                                     cfg=distill_config, rank=rank)
             
@@ -372,7 +348,6 @@ def main():
         # ----------------------------
         finetune_config, args = prepare_finetune_configs(args, model_config, 
                                                         args.finetune_config)
-        # finetune_config = update_config_from_args(finetune_config, args)
         finetune_config = setup_fsdp_config(finetune_config, args, 'finetune')
                 
         model, ft_peft_config = load_and_convert_finetune(model, finetune_config,
@@ -392,14 +367,13 @@ def main():
         if True:  # if rank == 0:
             print_header('** Sanity check model weights **')
             for n, p in model.named_parameters():
-                # if ('layers.0.' in n and ('feature_map' in n or 'lora' in n)):
                 if 'layers.0.' in n:
                     print(f'-> {n}:\n', p)
     # Back to LM Eval model
     lm.model = model
     model = lm
 
-    if args.task in ['mmlu', 'hendrycksTest', 'mmlu_cloze']:
+    if args.task in ['mmlu', 'hendrycksTest']:
         from lm_eval.tasks import TASK_REGISTRY
         tasks = sorted([k for k in TASK_REGISTRY.keys() if f'{args.task}-' in k])
     else:

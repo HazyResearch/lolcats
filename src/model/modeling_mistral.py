@@ -94,8 +94,6 @@ class LooooolcatsMistralForCausalLM(LolcatsMistralForCausalLM):
         Forward pass where we chunk inputs 
         """
         self.generating = False
-        # assert output_attentions is False
-        # assert use_cache is True
         if use_cache is not True:
             use_cache = True
         
@@ -135,8 +133,6 @@ class LooooolcatsMistralForCausalLM(LolcatsMistralForCausalLM):
 
             all_logits = []  # save these
             for _idx, _input_ids in enumerate(input_ids):
-                # print(f'Model processing _input_ids.shape:', _input_ids.shape)
-                # labels = copy.deepcopy(_input_ids)
                 outputs = super().forward(_input_ids, None, 
                                           position_ids[_idx] if position_ids is not None else None, 
                                           past_key_values, inputs_embeds, 

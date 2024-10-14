@@ -41,7 +41,7 @@ def load_and_convert_attns(model: nn.Module,
     peft_key = 'peft'  # inconsistency across configs... why do this to myself
     if 'peft_config' in model_config['attention']:
         peft_key = 'peft_config'
-    if peft_key in model_config['attention']:  #  and not prior_loras:
+    if peft_key in model_config['attention']:
         peft_config = model_config['attention'][peft_key]
         model, peft_config = create_peft_config(model, peft_config, 
                                                 model_config['model']['torch_dtype'],
@@ -117,7 +117,19 @@ def load_and_convert_finetune(model: nn.Module,
                         p.requires_grad = True
     else:
         for p in model.parameters():
-            p.requires_grad = True
+            p.requires_grad = False
+        # Keep specified weights trainable
+        if 'trainable_weights' in finetune_config.finetune:
+            for name in finetune_config.finetune['trainable_weights']:
+                for n, p in model.named_parameters():
+                    if name in n: 
+                        if 'layers_to_ignore' in finetune_config.finetune:
+                            layer = int(n.split('layers.')[-1].split('.')[0])
+                            if layer not in finetune_config.finetune['layers_to_ignore']:
+                                p.requires_grad = True
+                        else:
+                            p.requires_grad = True
+        
 
     # Load weights
     if checkpoint_path:
