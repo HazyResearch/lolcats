@@ -14,6 +14,7 @@ sbatch scripts/llama3_1_405b/405b_e2e_lr1e-2_n1024.sh
 
 
 2. RedPajama data, 1024 sequence length, block-wise attention transfer over 14 blocks with 9 layers per block
+
 First, shard Llama 3.1 405B into blocks of 9 layers each:
 ```
 bash

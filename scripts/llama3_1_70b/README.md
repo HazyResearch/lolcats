@@ -20,6 +20,7 @@ bash scripts/llama3_1_70b/70b_e2e_rp_xent0_mse1000.sh
 ```
 
 3. RedPajama data, 2048 sequence length, block-wise attention transfer over layers with 5 layers per block
+
 First, shard Llama 3.1 70B into blocks of 5 layers each:
 ```
 bash

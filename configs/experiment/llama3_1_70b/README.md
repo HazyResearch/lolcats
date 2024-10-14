@@ -15,5 +15,5 @@ Red pajama at 2048 sequence length (the default length is 1024):
 - Finetune configs: `finetune_rp2048_llama70b_qv.yaml`
 
 
-Sample scripts for linearization, using these configs, are provided at: `lolcats/scripts/llama3_1_8b/`
+Sample scripts for linearization, using these configs, are provided at: `lolcats/scripts/llama3_1_70b/`
 

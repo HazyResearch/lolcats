@@ -27,7 +27,8 @@ from .utils.packing import ConcatDataset
 logger = logging.get_logger(__name__)
 
 
-LONG_LLM_DIR = '/data/long-llm/'
+LONG_LLM_DIR = 'data/long-llm/'
+assert os.path.exists(LONG_LLM_DIR), f"Path {LONG_LLM_DIR} does not exist! Please set the correct path to your red pajama data in lolcats/src/dataloaders/redpajama_sample.py"
 
 
 def get_lm_loader(dataset: Dataset, tokenizer: AutoTokenizer, 

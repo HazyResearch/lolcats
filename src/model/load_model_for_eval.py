@@ -164,7 +164,9 @@ def load_model_from_checkpoint(attn_mlp_checkpoint_path: str = None,
         if len(attn_mlp_checkpoint_path.split('/')) == 4:
             model_config = attn_mlp_checkpoint_path.split('/')[2]
         else:
-            model_config = [p for p in attn_mlp_checkpoint_path.split('/') if '=' not in p and 'finetune' not in p and 'wtk64' in p and 'xent' not in p][0]
+            # breakpoint()
+            # model_config = [p for p in attn_mlp_checkpoint_path.split('/') if '=' not in p and 'finetune' not in p and 'wtk64' in p and 'xent' not in p][0]
+            model_config = [p for p in attn_mlp_checkpoint_path.split('/') if '=' not in p and 'finetune' not in p and 'distill' in p][0]
             # model_config = attn_mlp_checkpoint_path.split('/')[-1].split('-m=')[-1].split('-')[0]
         model_config_path = join(config_dir, 'model', 'llama3_1_8b/' f'{model_config}.yaml')
         model_config = OmegaConf.load(model_config_path)

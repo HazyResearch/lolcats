@@ -206,9 +206,6 @@ def evaluate_lm(model, train_config, eval_dataloader,
     skipped = {}
     criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     for step, batch in enumerate(pbar):
-        # if step <= 3200:    # FLAG FOR CRASH
-        #     continue
-
         for key in batch.keys():
             if (type(batch[key]) == torch.Tensor):
                 if train_config.enable_fsdp:
@@ -221,27 +218,17 @@ def evaluate_lm(model, train_config, eval_dataloader,
         
         # Ensure no gradients are computed for this scope to save memory
         with torch.no_grad():
-            # Forward pass and get log probs
             input_keys = {'input_ids'}  
             inputs = {k: v.to(model.device) for k, v in batch.items() if k in input_keys} 
-
             bs = inputs['input_ids'].shape[0] 
             seq_len = inputs['input_ids'].shape[1]
 
-            if seq_len > 2048:
-                # inputs['input_ids'] = torch.concat([
-                #     inputs['input_ids'][:, 0:24],
-                #     inputs['input_ids'][:, -1200:]
-                # ], dim=1)
-                if rank == 0:
-                    print(f"{step=}: large input_ids {inputs['input_ids'].shape=}")
-                correctness[step] = False
-                skipped[step] = True
-                continue  
-
+            # model call
             outputs = model(**inputs, output_attentions=False, use_cache=False) 
             outputs = outputs.get('logits')[..., -1, :].contiguous()
             target_ids = batch['target_ids'].to(model.device)
+
+            # find the answer with the highest probability
             losses = []
             for choice_idx in range(outputs.shape[0]):
                 output = outputs[choice_idx].unsqueeze(0)
@@ -307,21 +294,6 @@ def main():
             model_config.model.device_map = 'auto'
         else:
             model_config.model.device_map = None  # FSDP will complain about device placement o.w.
-
-    # model paths
-    try:
-        if not os.path.exists(model_config.model.pretrained_model_name_or_path):
-            print(f"Model path {model_config.model.pretrained_model_name_or_path} does not exist. Using backup path. {model_config.model.pretrained_model_name_or_path_backup}")
-            model_config.model.pretrained_model_name_or_path = model_config.model.pretrained_model_name_or_path_backup
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    except: 
-        print(f"Model without model.pretrained_model_name_or_path_backup path")
-        pass
-    if "pretrained_model_name_or_path_backup" in model_config.model:
-        model_config.model.pop("pretrained_model_name_or_path_backup")
-    if "pretrained_model_name_or_path_backup" in distill_config.dataset.pretrained_model_config:
-        distill_config.dataset.pretrained_model_config.pop("pretrained_model_name_or_path_backup")
-    
 
     # Update dataset pretrained model config
     print(f"{distill_config.dataset.pretrained_model_config=}")
@@ -460,7 +432,7 @@ def main():
         if '.pt' in args.finetune_checkpoint_path:
             with torch.no_grad():
                 _keys = model.load_state_dict(torch.load(args.finetune_checkpoint_path), strict=False)
-                # check_state_dict_keys(_keys, 0)
+                print(f"Found {len(_keys.unexpected_keys)} unexpected keys.")
         else:
             model = load_sharded_model_single_gpu(model, model_path=args.finetune_checkpoint_path,  
                                                     cfg=finetune_config, rank=rank)
@@ -492,13 +464,14 @@ def main():
 
         model = FSDP(
             model,
-            auto_wrap_policy=my_auto_wrapping_policy,  # if train_config.use_peft else wrapping_policy,
+            auto_wrap_policy=my_auto_wrapping_policy, 
+            wrapping_policy,
             cpu_offload=CPUOffload(offload_params=True) if fsdp_config.fsdp_cpu_offload else None,
             mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
             sharding_strategy=fsdp_config.sharding_strategy,
             device_id=device_id,
             limit_all_gathers=True,
-            sync_module_states=args.low_cpu_fsdp,  # train_config.low_cpu_fsdp
+            sync_module_states=args.low_cpu_fsdp,  
             param_init_fn=lambda module: module.to_empty(device=torch.device("cuda"), recurse=False)
             if args.low_cpu_fsdp and rank != 0 else None,
         )
@@ -525,7 +498,9 @@ def main():
                 print(f'├── {n} (dtype = {p.dtype})')
 
     print(f"Getting the MMLU dataset:")
-    with open("/home/rahul/code/clean/lolcats/mmlu.pkl", 'rb') as f:
+    if not os.path.exists("lolcats/demos/llm_mmlu_eval/mmlu.pkl"):
+        print(f"Please make sure the paths are set corretly for mmlu.pkl")
+    with open("lolcats/demos/llm_mmlu_eval/mmlu.pkl", 'rb') as f:
         data = pickle.load(f)
     dataset = InputDataset(data)
     dataloader = DataLoader(dataset, shuffle=False, batch_size=4)

@@ -127,7 +127,7 @@ def load_and_convert_finetune(model: nn.Module,
                     if name in n:
                         p.requires_grad = True
     else:
-        for p in model.parameters():
+        for p in model.parameters(): #'model.layers.31.self_attn.feature_map_q.mlp.layer',
             p.requires_grad = True
 
     # Load weights
@@ -135,6 +135,13 @@ def load_and_convert_finetune(model: nn.Module,
         print(f"Loading weights from {checkpoint_path}")
         state_dict = torch.load(checkpoint_path)['model_state_dict']
         _keys = model.load_state_dict(state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+        if len(_keys.unexpected_keys) > 0:
+            new_state_dict = {k.replace('model.', 'base_model.model.model.'): v for k, v in state_dict.items()}
+            _keys = model.load_state_dict(new_state_dict, strict=False)
+
         try:
             assert len(_keys.unexpected_keys) == 0
             if rank == 0:
@@ -160,7 +167,7 @@ def load_and_convert_finetune(model: nn.Module,
         except Exception as e:
             print(e)
 
-    if print_model and rank == 0:  # Look at model
+    if print_model and rank == 0: 
         print_header('*** Trainable Parameters ***')
         count = 0
         for n, p in model.named_parameters():

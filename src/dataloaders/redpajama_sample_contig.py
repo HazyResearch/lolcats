@@ -27,7 +27,10 @@ from .redpajama_sample import Data
 
 logger = logging.get_logger(__name__)
 
-CONFIG_DIR = '/home/rahul/code/clean/lolcats/configs'
+CONFIG_DIR = '/home/simarora/code/lolcats/configs'
+assert os.path.exists(CONFIG_DIR), f"{CONFIG_DIR} does not exist! Please set the correct CONFIG_DIR in lolcats/src/dataloaders/redpajama_sample_contig.py"
+
+
 
 # Models for computing effective sequence length
 from src.model.pretrained import get_pretrained_loader

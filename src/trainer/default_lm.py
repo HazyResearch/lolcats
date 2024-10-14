@@ -161,10 +161,6 @@ class OurTrainer():
         for ix, data in enumerate(pbar):            
             loss, train_metrics = self.compute_loss(model, data, 
                                                     sample_idx=ix)
-<<<<<<< HEAD
-
-=======
->>>>>>> 476b09136c1268ee389631cc9e673c3cabed336d
             loss /= accum_iter
             if not self.compute_loss_backprop:
                 # loss.backward() did not occur in compute_loss
