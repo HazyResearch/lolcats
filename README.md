@@ -160,8 +160,8 @@ python distill_llama.py --model_config distill_mistral_7b_lk_smd_fd64 \
 #### Mistral-7B-v0.1, T2R Feature Map, Standard Linear Attention
 
 ```bash
-python distill_llama.py --model_config distill_mistral_7b_lk_smd_wtk64_fd64_w01 \
---distill_config distill_mistral_7b_lk_t2r \
+python distill_llama.py --model_config distill_mistral_7b_lk_t2r \
+--distill_config distill_alpaca_clean_xent0_mse1000_lr1e-2 \
 --finetune_config finetune_lora_qkvo_alpaca_clean \
 --eval_config eval_alpaca_clean \
 --lk_zero_init \
