@@ -44,8 +44,5 @@ def get_scheduler(lr_scheduler_type: str, optimizer: Optimizer,
         from transformers import get_linear_schedule_with_warmup
         return get_linear_schedule_with_warmup(optimizer=optimizer, **kwargs)
     
-    elif lr_scheduler_type == 'timm_cosine':
-        from timm.scheduler.cosine_lr import CosineLRScheduler
-        return CosineLRScheduler(optimizer=optimizer, **kwargs)
     else:
         return None
