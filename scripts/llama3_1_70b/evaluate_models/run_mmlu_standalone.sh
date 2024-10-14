@@ -1,4 +1,5 @@
 
+# This will find the model shards that you've trained, based on the config names
 
 export PYTHONPATH=/home/simarora/code/lolcats/
 

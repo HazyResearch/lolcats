@@ -43,7 +43,7 @@ bash scripts/llama3_1_70b/data\=rpcontig_len\=2048_trenchcoat/cria_train/1.sh
 bash scripts/llama3_1_70b/data\=rpcontig_len\=2048_trenchcoat/cria_train/16.sh
 ```
 
-Fourth, stitch the blocks together with LoRA finetuning:
+Fourth, stitch the blocks together with LoRA finetuning. At the end, you should have a single `.pt` file that contains the linear attention learned feature maps and the LoRA weights etc. of LoLCATS.
 ```
 bash
 cd lolcats/
