@@ -4,6 +4,11 @@
 <img src="assets/lolcats_and_tk_llamas.png" align='center' width=80% height=80%>
 </p>
 
+### [Paper](https://arxiv.org/abs/2410.10254) | [Blog Part 1](https://hazyresearch.stanford.edu/blog/2024-10-14-lolcats-p1) | [Blog Part 2](https://hazyresearch.stanford.edu/blog/2024-10-14-lolcats-p2)
+---
+
+
+
 We're excited to share LoLCATs, a new method to *convert* existing Transformers like Llamas & Mistrals into state-of-the-art subquadratic LLMs. 
 
 LoLCATs does two things:
