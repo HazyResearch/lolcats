@@ -97,7 +97,7 @@ We support a faster causal linear attention with the CUDA kernel from [https://g
 }
 ```
 
-To build the kernel (`causal_dot_product`), first modify the GPU setup and C++ verisons in `./csrc/setup.py` to match that of your system.
+To build the kernel (`causal_dot_product`), first modify the GPU setup and C++ versions in `./csrc/setup.py` to match that of your system.
 
 Then, activate the conda environment (`conda activate lolcats`), navigate to `./csrc/`, and run `python setup.py install` within `./csrc/`, i.e.,
 
