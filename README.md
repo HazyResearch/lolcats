@@ -25,6 +25,10 @@ In the [lolcats-scaled branch](https://github.com/HazyResearch/lolcats/tree/lolc
 
 ## Getting started
 
+### Use the model in Hugging Face Space
+
+A demo is hosted as a Hugging Face Space. You can try the model out [here](https://huggingface.co/spaces/ariG23498/lolcats).
+
 ### Setup dependencies
 
 Please see `environment.yaml` for dependencies and adjust PyTorch CUDA version if needed. We can set them up with conda:
